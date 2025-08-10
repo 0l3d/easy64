@@ -1,29 +1,29 @@
-input r0
+input r0     # input for calculation
 
-cmp r0, 1 
-je add 
+cmp r0, 1    # if r0 == 1 
+je add       # then jump add 
 
-cmp r0, 2 
-je sub 
+cmp r0, 2    # if r0 == 2 
+je sub       # then jump sub 
 
-cmp r0, 3
-je mult 
+cmp r0, 3    # same 
+je mult      # same 
 
-cmp r0, 4 
-je div 
+cmp r0, 4    # same 
+je div       # are u still reading these comments? crazy man
 
-jmp exit
+jmp exit     # i know u re not reading
 
+add:         # label bla bla im bored
+  input r1   # input for num 1 
+  input r2   # input for num 2
 
-add:
-  input r1
-  input r2 
+  add r2, r1 # some math power yeaah (just num1 + num2)  
 
-  add r2, r1 
+  print r2   # print result
+  jmp exit   # jump to exit 
 
-  print r2
-  jmp exit
-
+             # i dont explain other things cause they re all same.
 sub: 
   input r1 
   input r2 
