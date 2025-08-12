@@ -16,17 +16,23 @@ void interpret_easy64(const char *binname) {
   }
 
   memset(regsc, 0, sizeof(regsc));
-
   // CPU FEATURES
   uint64_t call_stack[256];
   int sppush = 0;
   int spcall = 0;
-  uint64_t pc = 0;
+
   uint64_t push_stack[256];
 
-  Instruction instrc;
+  int section_code_address = 0;
   fseek(binfile, 0, SEEK_SET);
+  fread(&section_code_address, sizeof(section_code_address), 1, binfile);
+  fseek(binfile, section_code_address, SEEK_SET);
+
+  uint64_t pc = 0;
+
+  Instruction instrc;
   while (fread(&instrc, sizeof(Instruction), 1, binfile)) {
+
     switch (instrc.opcode) {
     case OPCODE_MOV:
       if (instrc.src == 0xFF) {
@@ -39,12 +45,12 @@ void interpret_easy64(const char *binname) {
       }
       break;
     case OPCODE_ADD:
-      if (instrc.src == 0xff) {
-        uint8_t dst_reg = instrc.dst & 0x3f;
+      if (instrc.src == 0xFF) {
+        uint8_t dst_reg = instrc.dst & 0x3F;
         regsc[dst_reg].u64 += instrc.imm64;
       } else {
-        uint8_t src_reg = instrc.src & 0x3f;
-        uint8_t dst_reg = instrc.dst & 0x3f;
+        uint8_t src_reg = instrc.src & 0x3F;
+        uint8_t dst_reg = instrc.dst & 0x3F;
         regsc[dst_reg].u64 += regsc[src_reg].u64;
       }
       break;
@@ -122,7 +128,8 @@ void interpret_easy64(const char *binname) {
     case OPCODE_RET:
       if (spcall > 0) {
         pc = call_stack[--spcall];
-        fseek(binfile, pc * sizeof(Instruction), SEEK_SET);
+        fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+              SEEK_SET);
         continue;
       } else {
         printf("CCPU READ ERROR: RET USAGE UNDEFINED");
@@ -183,7 +190,8 @@ void interpret_easy64(const char *binname) {
     case OPCODE_JE:
       if (flags.zero) {
         pc = instrc.imm64;
-        fseek(binfile, pc * sizeof(Instruction), SEEK_SET);
+        fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+              SEEK_SET);
         continue;
       }
       break;
@@ -191,7 +199,8 @@ void interpret_easy64(const char *binname) {
     case OPCODE_JNE:
       if (!flags.zero) {
         pc = instrc.imm64;
-        fseek(binfile, pc * sizeof(Instruction), SEEK_SET);
+        fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+              SEEK_SET);
         continue;
       }
       break;
@@ -199,7 +208,8 @@ void interpret_easy64(const char *binname) {
     case OPCODE_JL:
       if (flags.sign) {
         pc = instrc.imm64;
-        fseek(binfile, pc * sizeof(Instruction), SEEK_SET);
+        fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+              SEEK_SET);
         continue;
       }
       break;
@@ -207,19 +217,22 @@ void interpret_easy64(const char *binname) {
     case OPCODE_JG:
       if (flags.greater) {
         pc = instrc.imm64;
-        fseek(binfile, pc * sizeof(Instruction), SEEK_SET);
+        fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+              SEEK_SET);
         continue;
       }
       break;
     case OPCODE_JMP:
       pc = instrc.imm64;
-      fseek(binfile, pc * sizeof(Instruction), SEEK_SET);
+      fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+            SEEK_SET);
       continue;
 
     case OPCODE_CALL:
       call_stack[spcall++] = pc + 1;
       pc = instrc.imm64;
-      fseek(binfile, pc * sizeof(Instruction), SEEK_SET);
+      fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+            SEEK_SET);
       continue;
     case OPCODE_PUSH:
       if (sppush >= 256) {
@@ -250,6 +263,21 @@ void interpret_easy64(const char *binname) {
       scanf("%lu", &out);
       regsc[instrc.dst & 0x3F].u64 = out;
       break;
+    case OPCODE_PRINTSTR:
+      uint64_t addr = regsc[instrc.dst & 0x3F].u64;
+
+      long current_pos = ftell(binfile);
+
+      fseek(binfile, addr, SEEK_SET);
+      int c;
+      while ((c = fgetc(binfile)) != EOF && c != '\0') {
+        putchar(c);
+      }
+
+      fseek(binfile, current_pos, SEEK_SET);
+      break;
+    default:
+      continue;
     }
 
     pc++;

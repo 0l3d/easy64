@@ -30,13 +30,49 @@ typedef struct {
   uint64_t imm64;
 } Instruction;
 
+typedef enum { SECTION_CODE, SECTION_DATA, SECTION_BSS } Section;
+
 typedef enum { LABEL_TYPE_CODE, LABEL_TYPE_DATA } LabelType;
+
+typedef enum {
+  DATA_TYPE_RP,
+  DATA_TYPE_RW,
+  DATA_TYPE_RB,
+  DATA_TYPE_RE,
+  DATA_TYPE_RR
+} BssType;
+
+typedef enum {
+  DATA_TYPE_ASCII,
+  DATA_TYPE_BYTE,
+  DATA_TYPE_HWORD,
+  DATA_TYPE_WORD,
+  DATA_TYPE_DWORD,
+  DATA_TYPE_FLOAT,
+} DataType;
 
 typedef struct {
   char name[32];
   int address;
   LabelType type;
 } Label;
+
+typedef struct {
+  char name[32];
+  int addr;
+  DataType type;
+  union {
+    char *ascii;
+    int integer;
+  };
+} Data;
+
+typedef struct {
+  char name[32];
+  int addr;
+  BssType type;
+  int size;
+} BSS;
 
 typedef struct {
   int zero;
@@ -72,6 +108,7 @@ typedef enum {
   OPCODE_DEC = 0x18,
   OPCODE_PRINT = 0x19,
   OPCODE_INPUT = 0x20,
+  OPCODE_PRINTSTR = 0x21,
 } Opcode;
 
 void parser(const char *asm_file, const char *out_file);

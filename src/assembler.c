@@ -1,6 +1,7 @@
 #include "easy.h"
 #include <ctype.h>
 #include <inttypes.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,7 +11,14 @@ int error_report = 0;
 int linecounter = 0;
 
 Label labels[300] = {0};
-int label_count;
+// BSS bss[300] = {0};
+// int bss_count;
+int label_count = 0;
+
+Data datas[300] = {0};
+int data_count = 0;
+
+Section sections;
 
 Register64 regs[20];
 
@@ -23,7 +31,13 @@ int tokenizer(char *bufin, char *bufout[], int max_count) {
       sub[0] = ',';
       sub[1] = '\0';
       bufout[token_count++] = sub;
-      p += 1;
+      p++;
+    } else if (*p == ':') {
+      char *sub = malloc(2);
+      sub[0] = ':';
+      sub[1] = '\0';
+      bufout[token_count++] = sub;
+      p++;
     } else if (*p == '#') {
       break;
     } else if (isspace(*p)) {
@@ -45,7 +59,7 @@ int tokenizer(char *bufin, char *bufout[], int max_count) {
         p++;
     } else {
       const char *word_start = p;
-      while (*p && !isspace(*p) && *p != ',')
+      while (*p && !isspace(*p) && *p != ',' && *p != ':')
         p++;
       int word_len = p - word_start;
       char *word = malloc(word_len + 1);
@@ -60,7 +74,22 @@ int tokenizer(char *bufin, char *bufout[], int max_count) {
   return token_count;
 }
 
-void section() {}
+int section(char **tokens) {
+  if (strcmp(tokens[0], "section") == 0) {
+    if (strcmp(tokens[1], "code") == 0) {
+      sections = SECTION_CODE;
+    } else if (strcmp(tokens[1], "data") == 0) {
+      sections = SECTION_DATA;
+    } else if (strcmp(tokens[1], "bss") == 0) {
+      // BSS SECTION
+    } else {
+      printf("Got an error Line %d, Situation: 'undefined section'.",
+             linecounter);
+    }
+  }
+  return 0;
+}
+
 void labelsp(const char *label_name, int pos, LabelType type) {
   if (label_count == 300) {
     printf("MAXIMUM LABEL : 300 ");
@@ -71,8 +100,17 @@ void labelsp(const char *label_name, int pos, LabelType type) {
   labels[label_count].type = type;
   label_count++;
 }
-void bss() {}
-void data() {}
+
+void datasp(const char *data_label_name, int pos, DataType type) {
+  if (data_count == 300) {
+    printf("MAXIMUM DATA : 300");
+    return;
+  }
+  strcpy(datas[data_count].name, data_label_name);
+  datas[data_count].addr = pos;
+  datas[data_count].type = type;
+  data_count++;
+}
 
 uint8_t en_registers(const char *reg_name, int reg_adr) {
   int index = -1;
@@ -94,6 +132,15 @@ uint8_t en_registers(const char *reg_name, int reg_adr) {
   return (type << 6) | (index & 0x3F);
 }
 
+int get_data_addr(const char *name) {
+  for (int i = 0; i < data_count; i++) {
+    if (strcmp(datas[i].name, name) == 0) {
+      return datas[i].addr;
+    }
+  }
+  return -1;
+}
+
 void def_operants(char **tokenized, Instruction *instrc, uint8_t opcode) {
 
   if (tokenized[2][0] != ',') {
@@ -107,7 +154,18 @@ void def_operants(char **tokenized, Instruction *instrc, uint8_t opcode) {
 
   instrc->opcode = opcode;
   if (isalpha(tokenized[1][0])) {
-    instrc->src = en_registers(tokenized[1], 0);
+    if (isalpha(tokenized[1][1])) {
+      int addr = get_data_addr(tokenized[1]);
+      if (addr == -1) {
+        printf("Got an error Line: %d, Situation: 'undefined label'",
+               linecounter);
+        return;
+      }
+      instrc->src = 0xFF;
+      instrc->imm64 = addr;
+    } else {
+      instrc->src = en_registers(tokenized[1], 0);
+    }
   } else {
     instrc->src = 0xFF;
     instrc->imm64 = (uint64_t)strtol(tokenized[1], NULL, 0);
@@ -150,6 +208,7 @@ void nlbl_operants(char **tokens, Instruction *instrc, uint8_t opcode) {
   const char *label = tokens[1];
   instrc->dst = en_registers(tokens[1], 0);
   instrc->src = 0xFF;
+  instrc->imm64 = 0;
 }
 
 void nothing_operants(char **tokens, Instruction *instrc, uint8_t opcode) {
@@ -240,6 +299,9 @@ int opcode(char *tokenized[], int count, Instruction *instrc) {
   } else if (strcmp(tokenized[0], "input") == 0) {
     nlbl_operants(tokenized, instrc, OPCODE_INPUT);
     return 1;
+  } else if (strcmp(tokenized[0], "printstr") == 0) {
+    nlbl_operants(tokenized, instrc, OPCODE_PRINTSTR);
+    return 1;
   }
   return 0;
 }
@@ -255,27 +317,54 @@ void parser(const char *asm_file, const char *out_file) {
   int byte_offset = 0;
   linecounter = 0;
 
+  int section_code_address = 0;
+  int current_instruction_pos = 0;
+
   while (fgets(line, sizeof(line), as_file)) {
     linecounter++;
     char *linecopy = strdup(line);
-    if (strchr(linecopy, ':')) {
-      char *label = strtok(linecopy, ":\n");
-      if (label) {
-        while (isspace(*label))
-          label++;
-        labelsp(label, byte_offset / sizeof(Instruction), LABEL_TYPE_CODE);
-      }
-    } else {
-      char *tokens[10];
-      int count = tokenizer(line, tokens, 10);
 
-      if (count >= 1) {
-        byte_offset += sizeof(Instruction);
+    char *tokens[1000];
+    int count = tokenizer(line, tokens, 10);
+
+    if (count >= 1) {
+      section(tokens);
+    }
+
+    if (sections == SECTION_CODE) {
+      if (!section_code_address) {
+        section_code_address = byte_offset + sizeof(int);
       }
 
-      for (int i = 0; i < count; i++) {
-        free(tokens[i]);
+      if (count >= 2 && strcmp(tokens[1], ":") == 0) {
+        labelsp(tokens[0], current_instruction_pos, LABEL_TYPE_CODE);
       }
+
+      if (count >= 1 && strcmp(tokens[0], "section") != 0) {
+        if (count == 1 || (count >= 2 && strcmp(tokens[1], ":") != 0)) {
+          current_instruction_pos++;
+        }
+      }
+
+    } else if (sections == SECTION_DATA) {
+      if (count >= 3 && strcmp(tokens[1], "ascii") == 0) {
+        datasp(tokens[0], byte_offset + sizeof(int), DATA_TYPE_ASCII);
+        size_t len = strlen(tokens[2]);
+        byte_offset += len + 1;
+      } else if (count >= 3 && strcmp(tokens[1], "byte") == 0) {
+        datasp(tokens[0], byte_offset + sizeof(int), DATA_TYPE_BYTE);
+        byte_offset += 1;
+      } else if (count >= 3 && strcmp(tokens[1], "hword") == 0) {
+        datasp(tokens[0], byte_offset + sizeof(int), DATA_TYPE_HWORD);
+        byte_offset += 2;
+      } else if (count >= 3 && strcmp(tokens[1], "word") == 0) {
+        datasp(tokens[0], byte_offset + sizeof(int), DATA_TYPE_WORD);
+        byte_offset += 4;
+      }
+    }
+
+    for (int i = 0; i < count; i++) {
+      free(tokens[i]);
     }
     free(linecopy);
   }
@@ -292,25 +381,45 @@ void parser(const char *asm_file, const char *out_file) {
     return;
   }
 
+  fwrite(&section_code_address, sizeof(section_code_address), 1, out);
+
   linecounter = 0;
   while (fgets(line, sizeof(line), as_file)) {
     linecounter++;
-    if (strchr(line, ':'))
-      continue;
 
     char *tokens[10];
     int count = tokenizer(line, tokens, 10);
 
+    if (count == 2 && strcmp(tokens[1], ":") == 0) {
+      for (int i = 0; i < count; i++) {
+        free(tokens[i]);
+      }
+      continue;
+    }
+
     if (count < 1)
       continue;
 
-    Instruction instrc = {0};
-    if (opcode(tokens, count, &instrc)) {
-      fwrite(&instrc, sizeof(instrc), 1, out);
-    } else {
-      printf("Got an error Line: %d, Situation: 'undefined token'. \nSTR: %s",
-             linecounter, line);
-      return;
+    section(tokens);
+
+    if (sections == SECTION_CODE) {
+      Instruction instrc = {0};
+      if (opcode(tokens, count, &instrc)) {
+        fwrite(&instrc, sizeof(instrc), 1, out);
+      }
+    } else if (sections == SECTION_DATA) {
+      if (count >= 3 && strcmp(tokens[1], "ascii") == 0) {
+        const char *str = tokens[2];
+        size_t len = strlen(str);
+        fwrite(str, 1, len, out);
+        fputc('\0', out);
+      } else if (count >= 3 && strcmp(tokens[1], "byte") == 0) {
+        fputc(tokens[2][0], out);
+      } else if (count >= 3 && strcmp(tokens[1], "hword") == 0) {
+        fwrite(tokens[2], 1, 2, out);
+      } else if (count >= 3 && strcmp(tokens[1], "word") == 0) {
+        fwrite(tokens[2], 1, 4, out);
+      }
     }
 
     for (int i = 0; i < count; i++) {
