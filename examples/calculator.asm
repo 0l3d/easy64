@@ -5,24 +5,35 @@ number2 ascii "Number 2: "                              # bla bla same
 result ascii "Result: "
 exit_msg ascii "Thanks for usage!"
 
-section code   # section code 
-mov select, r5 # r5 = address of select label 
-printstr r5    # go r5 address and write string 
-input r0       # input for calculation 
 
-cmp r0, 1      # if r0 == 1 
-je add         # then jump add 
 
-cmp r0, 2      # if r0 == 2 
-je sub         # then jump sub 
+section code     # section code 
 
-cmp r0, 3      # same 
-je mult        # same 
+entry start
 
-cmp r0, 4      # same 
-je div         # are u still reading these comments? crazy man
+exit:
+  mov exit_msg, r5
+  printstr r5
+  hlt 
 
-jmp exit       # i know u re not reading
+start:           # start entry point 
+  mov select, r5 # r5 = address of select label 
+  printstr r5    # go r5 address and write string 
+  input r0       # input for calculation 
+
+  cmp r0, 1      # if r0 == 1 
+  je add         # then jump add 
+
+  cmp r0, 2      # if r0 == 2 
+  je sub         # then jump sub 
+  
+  cmp r0, 3      # same 
+  je mult        # same 
+
+  cmp r0, 4      # same 
+  je div         # are u still reading these comments? crazy man
+
+  jmp exit       # i know u re not reading
 
 add:           # label bla bla im bored
   mov number1, r5 
@@ -87,7 +98,3 @@ div:
   jmp exit
 
 
-exit:
-  mov exit_msg, r5
-  printstr r5
-  hlt 

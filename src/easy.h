@@ -39,7 +39,7 @@ typedef enum {
   DATA_TYPE_RW,
   DATA_TYPE_RB,
   DATA_TYPE_RE,
-  DATA_TYPE_RR
+  DATA_TYPE_RR,
 } BssType;
 
 typedef enum {
@@ -109,6 +109,7 @@ typedef enum {
   OPCODE_PRINT = 0x19,
   OPCODE_INPUT = 0x20,
   OPCODE_PRINTSTR = 0x21,
+  OPCODE_ENTRY = 0x22,
 } Opcode;
 
 void parser(const char *asm_file, const char *out_file);

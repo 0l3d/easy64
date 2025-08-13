@@ -18,4 +18,4 @@ minimize:
 	strip $(TARGET)
 
 clean:
-	rm -rf $(OBJECTS) $(TARGET)
+	rm -rf $(OBJECTS) $(TARGET) a.out

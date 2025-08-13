@@ -11,6 +11,35 @@ Simple cpu architecture in C.
 - Arithmetic, logic, and bitwise operations
 - Input/output instructions (print, input)
 
+## Usage
+
+```bash
+git clone https://github.com/0l3d/easy64.git
+cd easy64/
+make
+
+./easy -h
+```
+
+## Examples
+
+**Hello World**
+
+```
+section data
+  hello_world ascii "Hello, World!"
+section code
+  mov hello_world, r0
+  printstr r0
+```
+
+### Compile and Interpret
+
+```bash
+./easy -c hello.asm # compiles to a.out
+./easy -i a.out
+```
+
 # Planned
 
 - Sections (data, bss)

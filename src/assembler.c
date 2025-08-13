@@ -26,7 +26,9 @@ int tokenizer(char *bufin, char *bufout[], int max_count) {
   int token_count = 0;
   const char *p = bufin;
   while (*p != '\0') {
-    if (*p == ',') {
+    if (*p == '#') {
+      break;
+    } else if (*p == ',') {
       char *sub = malloc(2);
       sub[0] = ',';
       sub[1] = '\0';
@@ -38,8 +40,12 @@ int tokenizer(char *bufin, char *bufout[], int max_count) {
       sub[1] = '\0';
       bufout[token_count++] = sub;
       p++;
-    } else if (*p == '#') {
-      break;
+    } else if (*p == '|') {
+      char *sub = malloc(2);
+      sub[0] = '|';
+      sub[1] = '\0';
+      bufout[token_count++] = sub;
+      p++;
     } else if (isspace(*p)) {
       p++;
       continue;
@@ -111,6 +117,8 @@ void datasp(const char *data_label_name, int pos, DataType type) {
   datas[data_count].type = type;
   data_count++;
 }
+
+void bss_sections() {}
 
 uint8_t en_registers(const char *reg_name, int reg_adr) {
   int index = -1;
@@ -302,6 +310,9 @@ int opcode(char *tokenized[], int count, Instruction *instrc) {
   } else if (strcmp(tokenized[0], "printstr") == 0) {
     nlbl_operants(tokenized, instrc, OPCODE_PRINTSTR);
     return 1;
+  } else if (strcmp(tokenized[0], "entry") == 0) {
+    lbl_operand(tokenized, instrc, OPCODE_ENTRY);
+    return 1;
   }
   return 0;
 }
@@ -319,6 +330,8 @@ void parser(const char *asm_file, const char *out_file) {
 
   int section_code_address = 0;
   int current_instruction_pos = 0;
+
+  sections = SECTION_DATA;
 
   while (fgets(line, sizeof(line), as_file)) {
     linecounter++;
@@ -390,17 +403,22 @@ void parser(const char *asm_file, const char *out_file) {
     char *tokens[10];
     int count = tokenizer(line, tokens, 10);
 
+    if (count == 0)
+      continue;
+
     if (count == 2 && strcmp(tokens[1], ":") == 0) {
       for (int i = 0; i < count; i++) {
         free(tokens[i]);
       }
       continue;
     }
-
-    if (count < 1)
+    if (count >= 1 && strcmp(tokens[0], "section") == 0) {
+      section(tokens);
+      for (int i = 0; i < count; i++) {
+        free(tokens[i]);
+      }
       continue;
-
-    section(tokens);
+    }
 
     if (sections == SECTION_CODE) {
       Instruction instrc = {0};

@@ -77,11 +77,31 @@ void interpret_easy64(const char *binname) {
     case OPCODE_DIV:
       if (instrc.src == 0xFF) {
         uint8_t dst_reg = instrc.dst & 0x3F;
-        regsc[dst_reg].u64 /= instrc.imm64;
+        uint64_t dividend = regsc[dst_reg].u64;
+        uint64_t divisor = instrc.imm64;
+
+        if (divisor == 0) {
+          printf("Division by zero\n");
+          fclose(binfile);
+          return;
+        }
+
+        regsc[dst_reg].u64 = dividend / divisor;
+        regsc[dst_reg + 1].u64 = dividend % divisor;
       } else {
         uint8_t src_reg = instrc.src & 0x3F;
         uint8_t dst_reg = instrc.dst & 0x3F;
-        regsc[dst_reg].u64 /= regsc[src_reg].u64;
+        uint64_t dividend = regsc[dst_reg].u64;
+        uint64_t divisor = regsc[src_reg].u64;
+
+        if (divisor == 0) {
+          printf("Division by zero\n");
+          fclose(binfile);
+          return;
+        }
+
+        regsc[dst_reg].u64 = dividend / divisor;
+        regsc[dst_reg + 1].u64 = dividend % divisor;
       }
       break;
     case OPCODE_AND:
@@ -276,6 +296,12 @@ void interpret_easy64(const char *binname) {
 
       fseek(binfile, current_pos, SEEK_SET);
       break;
+    case OPCODE_ENTRY:
+      pc = instrc.imm64;
+      fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+            SEEK_SET);
+      continue;
+
     default:
       continue;
     }
