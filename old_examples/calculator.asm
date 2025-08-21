@@ -1,11 +1,12 @@
+# THIS CODE IS DEPRECATED 
+# DONT USE THIS CODE
+
 section data                                            # section data 
 select ascii "Select an Operation [1|+ 2|- 3|* 4|/]: "  # string for print 
 number1 ascii "Number 1: "                              # string for print again 
 number2 ascii "Number 2: "                              # bla bla same 
 result ascii "Result: "
 exit_msg ascii "Thanks for usage!"
-
-
 
 section code     # section code 
 

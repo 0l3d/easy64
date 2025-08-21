@@ -6,20 +6,34 @@
 
 extern uint8_t memory[MEMORY_SIZE];
 
-typedef union {
-  uint64_t u64;
-  struct {
-    uint32_t low32;
-    uint32_t high32;
-  };
-  struct {
-    uint16_t low16;
-    uint16_t midlow16;
-    uint16_t midhigh16;
-    uint16_t high16;
-  };
-  struct {
-    uint8_t b0, b1, b2, b3, b4, b5, b6, b7;
+typedef struct {
+  int section_data;
+  int section_bss;
+  int section_code;
+} BinaryHeader;
+
+typedef enum {
+  VAL,
+  PTR,
+} RegType;
+
+typedef struct {
+  RegType type;
+  union {
+    uint64_t u64;
+    struct {
+      uint32_t low32;
+      uint32_t high32;
+    };
+    struct {
+      uint16_t low16;
+      uint16_t midlow16;
+      uint16_t midhigh16;
+      uint16_t high16;
+    };
+    struct {
+      uint8_t b0, b1, b2, b3, b4, b5, b6, b7;
+    };
   };
 } Register64;
 
@@ -69,6 +83,7 @@ typedef struct {
 
 typedef struct {
   char name[32];
+  int bss_id;
   int addr;
   BssType type;
   int size;
@@ -110,6 +125,7 @@ typedef enum {
   OPCODE_INPUT = 0x20,
   OPCODE_PRINTSTR = 0x21,
   OPCODE_ENTRY = 0x22,
+  OPCODE_SYSCALL = 0x23,
 } Opcode;
 
 void parser(const char *asm_file, const char *out_file);

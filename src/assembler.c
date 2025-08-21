@@ -11,9 +11,10 @@ int error_report = 0;
 int linecounter = 0;
 
 Label labels[300] = {0};
-// BSS bss[300] = {0};
-// int bss_count;
 int label_count = 0;
+
+BSS bss[300] = {0};
+int bss_count;
 
 Data datas[300] = {0};
 int data_count = 0;
@@ -87,7 +88,7 @@ int section(char **tokens) {
     } else if (strcmp(tokens[1], "data") == 0) {
       sections = SECTION_DATA;
     } else if (strcmp(tokens[1], "bss") == 0) {
-      // BSS SECTION
+      sections = SECTION_BSS;
     } else {
       printf("Got an error Line %d, Situation: 'undefined section'.",
              linecounter);
@@ -118,7 +119,19 @@ void datasp(const char *data_label_name, int pos, DataType type) {
   data_count++;
 }
 
-void bss_sections() {}
+void bsssp(const char *bss_label_name, int pos, BssType type, int id,
+           int size) {
+  if (bss_count == 300) {
+    printf("MAXIMUM BSS : 300");
+    return;
+  }
+  strcpy(bss[bss_count].name, bss_label_name);
+  bss[bss_count].bss_id = id;
+  bss[bss_count].addr = pos;
+  bss[bss_count].size = size;
+  bss[bss_count].type = type;
+  bss_count++;
+}
 
 uint8_t en_registers(const char *reg_name, int reg_adr) {
   int index = -1;
@@ -149,6 +162,15 @@ int get_data_addr(const char *name) {
   return -1;
 }
 
+int get_bss_addr(const char *name) {
+  for (int i = 0; i < bss_count; i++) {
+    if (strcmp(bss[i].name, name) == 0) {
+      return bss[i].addr;
+    }
+  }
+  return -1;
+}
+
 void def_operants(char **tokenized, Instruction *instrc, uint8_t opcode) {
 
   if (tokenized[2][0] != ',') {
@@ -165,11 +187,14 @@ void def_operants(char **tokenized, Instruction *instrc, uint8_t opcode) {
     if (isalpha(tokenized[1][1])) {
       int addr = get_data_addr(tokenized[1]);
       if (addr == -1) {
-        printf("Got an error Line: %d, Situation: 'undefined label'",
-               linecounter);
-        return;
+        int addr = get_bss_addr(tokenized[1]);
+        if (addr == -1) {
+          printf("Got an error Line: %d, Situation: 'undefined label' on %s",
+                 linecounter, tokenized[0]);
+          return;
+        }
       }
-      instrc->src = 0xFF;
+      instrc->src = 0xAD;
       instrc->imm64 = addr;
     } else {
       instrc->src = en_registers(tokenized[1], 0);
@@ -221,6 +246,13 @@ void nlbl_operants(char **tokens, Instruction *instrc, uint8_t opcode) {
 
 void nothing_operants(char **tokens, Instruction *instrc, uint8_t opcode) {
   instrc->opcode = opcode;
+  instrc->dst = 0xFF;
+  instrc->src = 0xFF;
+}
+
+void nlblnorg_operants(char **tokens, Instruction *instrc, uint8_t opcode) {
+  instrc->opcode = opcode;
+  instrc->imm64 = (uint64_t)strtol(tokens[1], NULL, 0);
   instrc->dst = 0xFF;
   instrc->src = 0xFF;
 }
@@ -313,6 +345,9 @@ int opcode(char *tokenized[], int count, Instruction *instrc) {
   } else if (strcmp(tokenized[0], "entry") == 0) {
     lbl_operand(tokenized, instrc, OPCODE_ENTRY);
     return 1;
+  } else if (strcmp(tokenized[0], "syscall") == 0) {
+    nlblnorg_operants(tokenized, instrc, OPCODE_SYSCALL);
+    return 1;
   }
   return 0;
 }
@@ -328,10 +363,12 @@ void parser(const char *asm_file, const char *out_file) {
   int byte_offset = 0;
   linecounter = 0;
 
-  int section_code_address = 0;
   int current_instruction_pos = 0;
 
   sections = SECTION_DATA;
+
+  BinaryHeader header;
+  int bss_counter = 0;
 
   while (fgets(line, sizeof(line), as_file)) {
     linecounter++;
@@ -345,8 +382,8 @@ void parser(const char *asm_file, const char *out_file) {
     }
 
     if (sections == SECTION_CODE) {
-      if (!section_code_address) {
-        section_code_address = byte_offset + sizeof(int);
+      if (!header.section_code) {
+        header.section_code = byte_offset + sizeof(BinaryHeader);
       }
 
       if (count >= 2 && strcmp(tokens[1], ":") == 0) {
@@ -360,19 +397,32 @@ void parser(const char *asm_file, const char *out_file) {
       }
 
     } else if (sections == SECTION_DATA) {
+      if (!header.section_data) {
+        header.section_data = byte_offset + sizeof(BinaryHeader);
+      }
       if (count >= 3 && strcmp(tokens[1], "ascii") == 0) {
-        datasp(tokens[0], byte_offset + sizeof(int), DATA_TYPE_ASCII);
+        datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_ASCII);
         size_t len = strlen(tokens[2]);
         byte_offset += len + 1;
       } else if (count >= 3 && strcmp(tokens[1], "byte") == 0) {
-        datasp(tokens[0], byte_offset + sizeof(int), DATA_TYPE_BYTE);
+        datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_BYTE);
         byte_offset += 1;
       } else if (count >= 3 && strcmp(tokens[1], "hword") == 0) {
-        datasp(tokens[0], byte_offset + sizeof(int), DATA_TYPE_HWORD);
+        datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_HWORD);
         byte_offset += 2;
       } else if (count >= 3 && strcmp(tokens[1], "word") == 0) {
-        datasp(tokens[0], byte_offset + sizeof(int), DATA_TYPE_WORD);
+        datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_WORD);
         byte_offset += 4;
+      }
+    } else if (sections == SECTION_BSS) {
+      if (!header.section_bss) {
+        header.section_bss = byte_offset + sizeof(BinaryHeader);
+      }
+      if (count >= 3 && strcmp(tokens[1], "reb") == 0) {
+        int size = atoi(tokens[2]);
+        bsssp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_RB,
+              bss_counter, size);
+        bss_counter++;
       }
     }
 
@@ -394,7 +444,7 @@ void parser(const char *asm_file, const char *out_file) {
     return;
   }
 
-  fwrite(&section_code_address, sizeof(section_code_address), 1, out);
+  fwrite(&header, sizeof(header), 1, out);
 
   linecounter = 0;
   while (fgets(line, sizeof(line), as_file)) {
@@ -432,11 +482,20 @@ void parser(const char *asm_file, const char *out_file) {
         fwrite(str, 1, len, out);
         fputc('\0', out);
       } else if (count >= 3 && strcmp(tokens[1], "byte") == 0) {
-        fputc(tokens[2][0], out);
+        uint8_t val = (uint8_t)strtol(tokens[2], NULL, 0);
+        fputc(val, out);
       } else if (count >= 3 && strcmp(tokens[1], "hword") == 0) {
-        fwrite(tokens[2], 1, 2, out);
+        uint16_t val = (uint16_t)strtol(tokens[2], NULL, 0);
+        fwrite(&val, 1, 2, out);
       } else if (count >= 3 && strcmp(tokens[1], "word") == 0) {
-        fwrite(tokens[2], 1, 4, out);
+        uint32_t val = (uint32_t)strtol(tokens[2], NULL, 0);
+        fwrite(&val, 1, 4, out);
+      } else if (sections == SECTION_BSS) {
+        if (count >= 3) {
+          for (int i = 0; i < bss_count; i++) {
+            fwrite(&bss[i], sizeof(BSS), 1, out);
+          }
+        }
       }
     }
 

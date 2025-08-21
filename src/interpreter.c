@@ -2,11 +2,16 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 Flags flags = {0};
 
 Register64 regsc[20];
+
+uint8_t memory[MEMORY_SIZE] = {0};
+uint8_t zmemory[MEMORY_SIZE] = {0};
 
 void interpret_easy64(const char *binname) {
   FILE *binfile = fopen(binname, "rb");
@@ -16,6 +21,7 @@ void interpret_easy64(const char *binname) {
   }
 
   memset(regsc, 0, sizeof(regsc));
+
   // CPU FEATURES
   uint64_t call_stack[256];
   int sppush = 0;
@@ -23,25 +29,33 @@ void interpret_easy64(const char *binname) {
 
   uint64_t push_stack[256];
 
-  int section_code_address = 0;
+  BinaryHeader header;
   fseek(binfile, 0, SEEK_SET);
-  fread(&section_code_address, sizeof(section_code_address), 1, binfile);
-  fseek(binfile, section_code_address, SEEK_SET);
+  fread(&header, sizeof(BinaryHeader), 1, binfile);
+
+  fseek(binfile, header.section_data, SEEK_SET);
+  fread(&memory, 1, sizeof(memory), binfile);
+  fseek(binfile, header.section_code, SEEK_SET);
 
   uint64_t pc = 0;
 
   Instruction instrc;
   while (fread(&instrc, sizeof(Instruction), 1, binfile)) {
-
     switch (instrc.opcode) {
     case OPCODE_MOV:
       if (instrc.src == 0xFF) {
-        uint8_t dst_reg = instrc.dst & 0x3F;
+        uint8_t dst_reg = instrc.dst & 0x3f;
         regsc[dst_reg].u64 = instrc.imm64;
+        regsc[dst_reg].type = VAL;
+      } else if (instrc.src == 0xAD) {
+        uint8_t dst_reg = instrc.dst & 0x3f;
+        regsc[dst_reg].u64 = instrc.imm64;
+        regsc[dst_reg].type = PTR;
       } else {
         uint8_t src_reg = instrc.src & 0x3F;
         uint8_t dst_reg = instrc.dst & 0x3F;
         regsc[dst_reg] = regsc[src_reg];
+        regsc[dst_reg].type = VAL;
       }
       break;
     case OPCODE_ADD:
@@ -148,7 +162,7 @@ void interpret_easy64(const char *binname) {
     case OPCODE_RET:
       if (spcall > 0) {
         pc = call_stack[--spcall];
-        fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+        fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
               SEEK_SET);
         continue;
       } else {
@@ -210,7 +224,7 @@ void interpret_easy64(const char *binname) {
     case OPCODE_JE:
       if (flags.zero) {
         pc = instrc.imm64;
-        fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+        fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
               SEEK_SET);
         continue;
       }
@@ -219,7 +233,7 @@ void interpret_easy64(const char *binname) {
     case OPCODE_JNE:
       if (!flags.zero) {
         pc = instrc.imm64;
-        fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+        fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
               SEEK_SET);
         continue;
       }
@@ -228,7 +242,7 @@ void interpret_easy64(const char *binname) {
     case OPCODE_JL:
       if (flags.sign) {
         pc = instrc.imm64;
-        fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+        fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
               SEEK_SET);
         continue;
       }
@@ -237,21 +251,21 @@ void interpret_easy64(const char *binname) {
     case OPCODE_JG:
       if (flags.greater) {
         pc = instrc.imm64;
-        fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+        fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
               SEEK_SET);
         continue;
       }
       break;
     case OPCODE_JMP:
       pc = instrc.imm64;
-      fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+      fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
             SEEK_SET);
       continue;
 
     case OPCODE_CALL:
       call_stack[spcall++] = pc + 1;
       pc = instrc.imm64;
-      fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+      fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
             SEEK_SET);
       continue;
     case OPCODE_PUSH:
@@ -275,33 +289,35 @@ void interpret_easy64(const char *binname) {
     case OPCODE_HLT:
       fclose(binfile);
       return;
-    case OPCODE_PRINT:
-      printf("%lu\n", regsc[instrc.dst & 0x3F].u64);
-      break;
-    case OPCODE_INPUT:
-      uint64_t out;
-      scanf("%lu", &out);
-      regsc[instrc.dst & 0x3F].u64 = out;
-      break;
-    case OPCODE_PRINTSTR:
-      uint64_t addr = regsc[instrc.dst & 0x3F].u64;
+    case OPCODE_SYSCALL:
+      uint64_t syscall_id = instrc.imm64;
 
       long current_pos = ftell(binfile);
 
-      fseek(binfile, addr, SEEK_SET);
-      int c;
-      while ((c = fgetc(binfile)) != EOF && c != '\0') {
-        putchar(c);
+      uint64_t args[6] = {0};
+      for (int i = 0; i < 6; i++) {
+        if (regsc[i].type == PTR) {
+          args[i] = (uint64_t)(memory + regsc[i].u64 - sizeof(BinaryHeader));
+        } else {
+          args[i] = regsc[i].u64;
+        }
       }
 
+      long ret = syscall(syscall_id, args[0], args[1], args[2], args[3],
+                         args[4], args[5]);
+
+      regsc[6].u64 = ret;
       fseek(binfile, current_pos, SEEK_SET);
+      break;
+    case OPCODE_PRINT:
+      // FOR DEBUG
+      printf("%ld\n", regsc[instrc.dst & 0x3F].u64);
       break;
     case OPCODE_ENTRY:
       pc = instrc.imm64;
-      fseek(binfile, section_code_address + (pc * sizeof(Instruction)),
+      fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
             SEEK_SET);
       continue;
-
     default:
       continue;
     }
