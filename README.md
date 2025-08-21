@@ -26,11 +26,15 @@ make
 **Hello World**
 
 ```
-section data
-  hello_world ascii "Hello, World!"
-section code
-  mov hello_world, r0
-  printstr r0
+section data # data section
+  hello_world ascii "Hello, World!" # helloworld
+section code # code section
+entry start  # entry selection
+start:       # start label
+  mov 1, r0
+  mov hello_world, r1  # write syscall -> write(r0 = 1, r1 = adress of hello_world, r2 = 14 (size));
+  mov 14, r2
+  syscall 1 # syscall and id (0 = read, 1 = write, referances -> https://filippo.io/linux-syscall-table/)
 ```
 
 ### Compile and Interpret
@@ -42,8 +46,7 @@ section code
 
 # Planned
 
-- Sections (data, bss)
-- Entry point (for example: entry label)
+- BSS section
 - Sub Register Support (Assembler generates binaries for sub-registers like r0, e0, b0, p0; currently CPU does not support execution on these sub-registers)
 
 # License
