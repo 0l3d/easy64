@@ -21,7 +21,7 @@ int data_count = 0;
 
 Section sections;
 
-Register64 regs[20];
+Register64 regs[NUM_REGS];
 
 int tokenizer(char *bufin, char *bufout[], int max_count) {
   int token_count = 0;
@@ -38,12 +38,6 @@ int tokenizer(char *bufin, char *bufout[], int max_count) {
     } else if (*p == ':') {
       char *sub = malloc(2);
       sub[0] = ':';
-      sub[1] = '\0';
-      bufout[token_count++] = sub;
-      p++;
-    } else if (*p == '|') {
-      char *sub = malloc(2);
-      sub[0] = '|';
       sub[1] = '\0';
       bufout[token_count++] = sub;
       p++;
@@ -119,17 +113,16 @@ void datasp(const char *data_label_name, int pos, DataType type) {
   data_count++;
 }
 
-void bsssp(const char *bss_label_name, int pos, BssType type, int id,
-           int size) {
+void bsssp(const char *bss_label_name, int pos, BssType type, int size) {
   if (bss_count == 300) {
     printf("MAXIMUM BSS : 300");
     return;
   }
   strcpy(bss[bss_count].name, bss_label_name);
-  bss[bss_count].bss_id = id;
-  bss[bss_count].addr = pos;
-  bss[bss_count].size = size;
-  bss[bss_count].type = type;
+  bss[bss_count].section.bss_id = bss_count;
+  bss[bss_count].section.addr = pos;
+  bss[bss_count].section.size = size;
+  bss[bss_count].section.type = type;
   bss_count++;
 }
 
@@ -165,7 +158,7 @@ int get_data_addr(const char *name) {
 int get_bss_addr(const char *name) {
   for (int i = 0; i < bss_count; i++) {
     if (strcmp(bss[i].name, name) == 0) {
-      return bss[i].addr;
+      return bss[i].section.addr;
     }
   }
   return -1;
@@ -185,9 +178,10 @@ void def_operants(char **tokenized, Instruction *instrc, uint8_t opcode) {
   instrc->opcode = opcode;
   if (isalpha(tokenized[1][0])) {
     if (isalpha(tokenized[1][1])) {
-      int addr = get_data_addr(tokenized[1]);
+      int addr = 0;
+      addr = get_data_addr(tokenized[1]);
       if (addr == -1) {
-        int addr = get_bss_addr(tokenized[1]);
+        addr = get_bss_addr(tokenized[1]);
         if (addr == -1) {
           printf("Got an error Line: %d, Situation: 'undefined label' on %s",
                  linecounter, tokenized[0]);
@@ -348,6 +342,9 @@ int opcode(char *tokenized[], int count, Instruction *instrc) {
   } else if (strcmp(tokenized[0], "syscall") == 0) {
     nlblnorg_operants(tokenized, instrc, OPCODE_SYSCALL);
     return 1;
+  } else if (strcmp(tokenized[0], "load") == 0) {
+    def_operants(tokenized, instrc, OPCODE_LOAD);
+    return 1;
   }
   return 0;
 }
@@ -368,8 +365,7 @@ void parser(const char *asm_file, const char *out_file) {
   sections = SECTION_DATA;
 
   BinaryHeader header;
-  int bss_counter = 0;
-
+  memset(&header, 0, sizeof(header));
   while (fgets(line, sizeof(line), as_file)) {
     linecounter++;
     char *linecopy = strdup(line);
@@ -421,8 +417,8 @@ void parser(const char *asm_file, const char *out_file) {
       if (count >= 3 && strcmp(tokens[1], "reb") == 0) {
         int size = atoi(tokens[2]);
         bsssp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_RB,
-              bss_counter, size);
-        bss_counter++;
+              size);
+        byte_offset += sizeof(BSSSectionType);
       }
     }
 
@@ -444,9 +440,11 @@ void parser(const char *asm_file, const char *out_file) {
     return;
   }
 
+  header.bss_count = bss_count;
   fwrite(&header, sizeof(header), 1, out);
 
   linecounter = 0;
+  int bss_i = 0;
   while (fgets(line, sizeof(line), as_file)) {
     linecounter++;
 
@@ -490,12 +488,10 @@ void parser(const char *asm_file, const char *out_file) {
       } else if (count >= 3 && strcmp(tokens[1], "word") == 0) {
         uint32_t val = (uint32_t)strtol(tokens[2], NULL, 0);
         fwrite(&val, 1, 4, out);
-      } else if (sections == SECTION_BSS) {
-        if (count >= 3) {
-          for (int i = 0; i < bss_count; i++) {
-            fwrite(&bss[i], sizeof(BSS), 1, out);
-          }
-        }
+      }
+    } else if (sections == SECTION_BSS) {
+      if (count >= 3) {
+        fwrite(&bss[bss_i++].section, sizeof(BSSSectionType), 1, out);
       }
     }
 

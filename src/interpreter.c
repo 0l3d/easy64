@@ -1,6 +1,7 @@
 #include "easy.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
@@ -8,10 +9,29 @@
 
 Flags flags = {0};
 
-Register64 regsc[20];
+Register64 regsc[NUM_REGS];
 
 uint8_t memory[MEMORY_SIZE] = {0};
-uint8_t zmemory[MEMORY_SIZE] = {0};
+uint8_t *zmemory[ZMEMORY_SIZE] = {0};
+
+void *resolve_ptr(uint64_t ptr, BinaryHeader *header, BSSSectionType *bss) {
+
+  uint64_t data_start = header->section_data;
+  uint64_t data_end = data_start + MEMORY_SIZE;
+
+  if (ptr >= data_start && ptr < data_end) {
+    return memory + (ptr - data_start);
+  }
+  for (int i = 0; i < header->bss_count; i++) {
+    BSSSectionType bss_entry = bss[i];
+    if (ptr >= bss_entry.addr && ptr < bss_entry.addr + bss_entry.size) {
+      return (void *)((uint8_t *)zmemory[bss_entry.bss_id] +
+                      (ptr - bss_entry.addr));
+    }
+  }
+
+  return NULL;
+}
 
 void interpret_easy64(const char *binname) {
   FILE *binfile = fopen(binname, "rb");
@@ -35,6 +55,16 @@ void interpret_easy64(const char *binname) {
 
   fseek(binfile, header.section_data, SEEK_SET);
   fread(&memory, 1, sizeof(memory), binfile);
+
+  BSSSectionType bss[header.bss_count];
+  fseek(binfile, header.section_bss, SEEK_SET);
+  fread(&bss, sizeof(BSSSectionType), header.bss_count, binfile);
+
+  for (int i = 0; i < header.bss_count; i++) {
+
+    zmemory[bss[i].bss_id] = (uint8_t *)calloc(bss[i].size, sizeof(uint8_t));
+  }
+
   fseek(binfile, header.section_code, SEEK_SET);
 
   uint64_t pc = 0;
@@ -49,13 +79,17 @@ void interpret_easy64(const char *binname) {
         regsc[dst_reg].type = VAL;
       } else if (instrc.src == 0xAD) {
         uint8_t dst_reg = instrc.dst & 0x3f;
-        regsc[dst_reg].u64 = instrc.imm64;
+        regsc[dst_reg].u64 += instrc.imm64;
         regsc[dst_reg].type = PTR;
       } else {
         uint8_t src_reg = instrc.src & 0x3F;
         uint8_t dst_reg = instrc.dst & 0x3F;
         regsc[dst_reg] = regsc[src_reg];
-        regsc[dst_reg].type = VAL;
+        if (regsc[src_reg].type == PTR) {
+          regsc[dst_reg].type = PTR;
+        } else {
+          regsc[dst_reg].type = VAL;
+        }
       }
       break;
     case OPCODE_ADD:
@@ -111,6 +145,10 @@ void interpret_easy64(const char *binname) {
         if (divisor == 0) {
           printf("Division by zero\n");
           fclose(binfile);
+
+          for (int i = 0; i < header.bss_count; i++) {
+            free(zmemory[bss[i].bss_id]);
+          }
           return;
         }
 
@@ -168,6 +206,10 @@ void interpret_easy64(const char *binname) {
       } else {
         printf("CCPU READ ERROR: RET USAGE UNDEFINED");
         fclose(binfile);
+
+        for (int i = 0; i < header.bss_count; i++) {
+          free(zmemory[bss[i].bss_id]);
+        }
         return;
       }
       break;
@@ -288,6 +330,9 @@ void interpret_easy64(const char *binname) {
       break;
     case OPCODE_HLT:
       fclose(binfile);
+      for (int i = 0; i < header.bss_count; i++) {
+        free(zmemory[bss[i].bss_id]);
+      }
       return;
     case OPCODE_SYSCALL:
       uint64_t syscall_id = instrc.imm64;
@@ -297,9 +342,12 @@ void interpret_easy64(const char *binname) {
       uint64_t args[6] = {0};
       for (int i = 0; i < 6; i++) {
         if (regsc[i].type == PTR) {
-          args[i] = (uint64_t)(memory + regsc[i].u64 - sizeof(BinaryHeader));
+          void *resolved = resolve_ptr(regsc[i].u64, &header, bss);
+          args[i] = (uint64_t)resolved;
+          regsc[i].u64 = 0;
         } else {
           args[i] = regsc[i].u64;
+          regsc[i].u64 = 0;
         }
       }
 
@@ -313,6 +361,30 @@ void interpret_easy64(const char *binname) {
       // FOR DEBUG
       printf("%ld\n", regsc[instrc.dst & 0x3F].u64);
       break;
+    case OPCODE_LOAD:
+      uint8_t dst_reg = instrc.dst & 0x3F;
+      uint8_t src_reg = instrc.src & 0x3F;
+
+      uint64_t addr = regsc[src_reg].u64;
+      if (regsc[src_reg].type != PTR) {
+        printf("LOAD: Invalid pointer access, REGISTER ISNT POINTER");
+        return;
+      }
+
+      void *ptr = resolve_ptr(addr, &header, bss);
+
+      if (ptr == NULL) {
+        printf("LOAD: Invalid memory access at address %lx\n", addr);
+        fclose(binfile);
+        for (int i = 0; i < header.bss_count; i++) {
+          free(zmemory[bss[i].bss_id]);
+        }
+        return;
+      }
+
+      regsc[dst_reg].u64 = *(uint8_t *)ptr;
+      regsc[dst_reg].type = VAL;
+      break;
     case OPCODE_ENTRY:
       pc = instrc.imm64;
       fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
@@ -323,6 +395,10 @@ void interpret_easy64(const char *binname) {
     }
 
     pc++;
+  }
+
+  for (int i = 0; i < header.bss_count; i++) {
+    free(zmemory[bss[i].bss_id]);
   }
   fclose(binfile);
 }

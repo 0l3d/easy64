@@ -1,8 +1,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define NUM_REGS 12
+#define NUM_REGS 20
 #define MEMORY_SIZE 65536
+#define ZMEMORY_SIZE 300
 
 extern uint8_t memory[MEMORY_SIZE];
 
@@ -10,6 +11,7 @@ typedef struct {
   int section_data;
   int section_bss;
   int section_code;
+  int bss_count;
 } BinaryHeader;
 
 typedef enum {
@@ -82,11 +84,15 @@ typedef struct {
 } Data;
 
 typedef struct {
-  char name[32];
   int bss_id;
-  int addr;
+  uint64_t addr;
   BssType type;
-  int size;
+  uint64_t size;
+} BSSSectionType;
+
+typedef struct {
+  char name[32];
+  BSSSectionType section;
 } BSS;
 
 typedef struct {
@@ -126,6 +132,7 @@ typedef enum {
   OPCODE_PRINTSTR = 0x21,
   OPCODE_ENTRY = 0x22,
   OPCODE_SYSCALL = 0x23,
+  OPCODE_LOAD = 0x24,
 } Opcode;
 
 void parser(const char *asm_file, const char *out_file);
