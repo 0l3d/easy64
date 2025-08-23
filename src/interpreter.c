@@ -363,7 +363,7 @@ void interpret_easy64(const char *binname) {
       // FOR DEBUG
       printf("%ld\n", regsc[instrc.dst & 0x3F].u64);
       break;
-    case OPCODE_LOAD:
+    case OPCODE_LOAD: {
       uint8_t dst_reg = instrc.dst & 0x3F;
       uint8_t src_reg = instrc.src & 0x3F;
 
@@ -387,6 +387,37 @@ void interpret_easy64(const char *binname) {
       regsc[dst_reg].u64 = *(uint8_t *)ptr;
       regsc[dst_reg].type = VAL;
       break;
+    }
+    case OPCODE_STORE: {
+      uint8_t src_reg = instrc.src & 0x3F;
+      uint64_t addr;
+
+      if (instrc.dst == 0xAD) {
+        addr = instrc.imm64;
+      } else {
+        uint8_t dst_reg = instrc.dst & 0x3F;
+        if (regsc[dst_reg].type != PTR) {
+          printf("STORE: Invalid pointer access, REGISTER ISN'T POINTER\n");
+          return;
+        }
+        addr = regsc[dst_reg].u64;
+      }
+
+      addr += regsc[10].u64;
+
+      void *ptr = resolve_ptr(addr, &header, bss);
+      if (ptr == NULL) {
+        printf("STORE: Invalid memory access at address %lx\n", addr);
+        fclose(binfile);
+        for (int i = 0; i < header.bss_count; i++) {
+          free(zmemory[bss[i].bss_id]);
+        }
+        return;
+      }
+
+      *(uint8_t *)ptr = (uint8_t)regsc[src_reg].u64;
+      break;
+    }
     case OPCODE_ENTRY:
       pc = instrc.imm64;
       fseek(binfile, header.section_code + (pc * sizeof(Instruction)),

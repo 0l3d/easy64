@@ -64,7 +64,6 @@ typedef enum {
   DATA_TYPE_HWORD,
   DATA_TYPE_WORD,
   DATA_TYPE_DWORD,
-  DATA_TYPE_FLOAT,
 } DataType;
 
 typedef struct {
@@ -133,6 +132,7 @@ typedef enum {
   OPCODE_ENTRY = 0x22,
   OPCODE_SYSCALL = 0x23,
   OPCODE_LOAD = 0x24,
+  OPCODE_STORE = 0x25,
 } Opcode;
 
 void parser(const char *asm_file, const char *out_file);

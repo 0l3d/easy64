@@ -19,7 +19,8 @@ write:
   mov msg, r1 
   mov 7, r2
   syscall 1
-
+  
+  mov 1, r0
   mov code, r1
   mov 1, r2
   syscall 1

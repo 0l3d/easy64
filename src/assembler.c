@@ -251,6 +251,44 @@ void nlblnorg_operants(char **tokens, Instruction *instrc, uint8_t opcode) {
   instrc->src = 0xFF;
 }
 
+void revdef_operants(char **tokenized, Instruction *instrc, uint8_t opcode) {
+  if (tokenized[2][0] != ',') {
+    printf("Got an error on Line %d, Situation: ',' undefined on %s\n",
+           linecounter, tokenized[0]);
+    error_report = 1;
+  } else if (strcmp(tokenized[1], tokenized[3]) == 0) {
+    printf("Warning: same register? Line: %d. Situation: %s -> %s on %s\n",
+           linecounter, tokenized[1], tokenized[3], tokenized[0]);
+  }
+
+  instrc->opcode = opcode;
+  if (isalpha(tokenized[3][0])) {
+    if (isalpha(tokenized[3][1])) {
+      int addr = 0;
+      addr = get_data_addr(tokenized[3]);
+      if (addr == -1) {
+        addr = get_bss_addr(tokenized[3]);
+        if (addr == -1) {
+          printf("Got an error Line: %d, Situation: 'undefined label' on %s",
+                 linecounter, tokenized[0]);
+          return;
+        }
+      }
+      instrc->dst = 0xAD;
+      instrc->imm64 = addr;
+    } else {
+      printf("Got an error on Line %d, Situation: 'undefined label' on %s",
+             linecounter, tokenized[0]);
+    }
+  }
+  if (isalpha(tokenized[1][0])) {
+    instrc->src = en_registers(tokenized[1], 0);
+  } else {
+    instrc->src = 0xFF;
+    instrc->imm64 = (uint64_t)strtol(tokenized[1], NULL, 0);
+  }
+}
+
 int opcode(char *tokenized[], int count, Instruction *instrc) {
   if (strcmp(tokenized[0], "nop") == 0) {
     nothing_operants(tokenized, instrc, OPCODE_NOP);
@@ -345,6 +383,9 @@ int opcode(char *tokenized[], int count, Instruction *instrc) {
   } else if (strcmp(tokenized[0], "load") == 0) {
     def_operants(tokenized, instrc, OPCODE_LOAD);
     return 1;
+  } else if (strcmp(tokenized[0], "store") == 0) {
+    revdef_operants(tokenized, instrc, OPCODE_STORE);
+    return 1;
   }
   return 0;
 }
@@ -409,6 +450,9 @@ void parser(const char *asm_file, const char *out_file) {
       } else if (count >= 3 && strcmp(tokens[1], "word") == 0) {
         datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_WORD);
         byte_offset += 4;
+      } else if (count >= 3 && strcmp(tokens[1], "dword") == 0) {
+        datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_DWORD);
+        byte_offset += 8;
       }
     } else if (sections == SECTION_BSS) {
       if (!header.section_bss) {
@@ -487,6 +531,9 @@ void parser(const char *asm_file, const char *out_file) {
         fwrite(&val, 1, 2, out);
       } else if (count >= 3 && strcmp(tokens[1], "word") == 0) {
         uint32_t val = (uint32_t)strtol(tokens[2], NULL, 0);
+        fwrite(&val, 1, 4, out);
+      } else if (count >= 3 && strcmp(tokens[1], "dword") == 0) {
+        uint64_t val = (uint64_t)strtol(tokens[2], NULL, 0);
         fwrite(&val, 1, 4, out);
       }
     } else if (sections == SECTION_BSS) {
