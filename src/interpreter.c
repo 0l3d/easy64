@@ -57,8 +57,10 @@ void interpret_easy64(const char *binname) {
   fread(&memory, 1, sizeof(memory), binfile);
 
   BSSSectionType bss[header.bss_count];
-  fseek(binfile, header.section_bss, SEEK_SET);
-  fread(&bss, sizeof(BSSSectionType), header.bss_count, binfile);
+  if (header.bss_count != 0) {
+    fseek(binfile, header.section_bss, SEEK_SET);
+    fread(&bss, sizeof(BSSSectionType), header.bss_count, binfile);
+  }
 
   for (int i = 0; i < header.bss_count; i++) {
 
