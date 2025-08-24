@@ -133,6 +133,7 @@ typedef enum {
   OPCODE_SYSCALL = 0x23,
   OPCODE_LOAD = 0x24,
   OPCODE_STORE = 0x25,
+  OPCODE_PRINTLBL = 0x26,
 } Opcode;
 
 void parser(const char *asm_file, const char *out_file);

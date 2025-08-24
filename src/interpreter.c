@@ -363,6 +363,11 @@ void interpret_easy64(const char *binname) {
       // FOR DEBUG
       printf("%ld\n", regsc[instrc.dst & 0x3F].u64);
       break;
+    case OPCODE_PRINTLBL:
+      // FOR DEBUG
+      uint8_t addr = instrc.imm64;
+      void *ptr = resolve_ptr(addr, &header, bss);
+      printf("%d", *(uint8_t *)ptr);
     case OPCODE_LOAD: {
       uint8_t dst_reg = instrc.dst & 0x3F;
       uint8_t src_reg = instrc.src & 0x3F;

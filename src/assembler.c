@@ -368,12 +368,6 @@ int opcode(char *tokenized[], int count, Instruction *instrc) {
   } else if (strcmp(tokenized[0], "print") == 0) {
     nlbl_operants(tokenized, instrc, OPCODE_PRINT);
     return 1;
-  } else if (strcmp(tokenized[0], "input") == 0) {
-    nlbl_operants(tokenized, instrc, OPCODE_INPUT);
-    return 1;
-  } else if (strcmp(tokenized[0], "printstr") == 0) {
-    nlbl_operants(tokenized, instrc, OPCODE_PRINTSTR);
-    return 1;
   } else if (strcmp(tokenized[0], "entry") == 0) {
     lbl_operand(tokenized, instrc, OPCODE_ENTRY);
     return 1;
@@ -385,6 +379,9 @@ int opcode(char *tokenized[], int count, Instruction *instrc) {
     return 1;
   } else if (strcmp(tokenized[0], "store") == 0) {
     revdef_operants(tokenized, instrc, OPCODE_STORE);
+    return 1;
+  } else if (strcmp(tokenized[0], "printlbl") == 0) {
+    lbl_operand(tokenized, instrc, OPCODE_PRINTLBL);
     return 1;
   }
   return 0;
