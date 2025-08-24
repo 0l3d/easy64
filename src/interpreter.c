@@ -47,7 +47,7 @@ void interpret_easy64(const char *binname) {
   int sppush = 0;
   int spcall = 0;
 
-  uint64_t push_stack[256];
+  Register64 push_stack[256];
 
   BinaryHeader header;
   fseek(binfile, 0, SEEK_SET);
@@ -314,19 +314,27 @@ void interpret_easy64(const char *binname) {
       continue;
     case OPCODE_PUSH:
       if (sppush >= 256) {
-        printf("STACK OVERFLOW");
+        printf("STACK OVERFLOW\n");
         fclose(binfile);
         return;
       }
-      push_stack[sppush++] = regsc[instrc.dst & 0x3F].u64;
+
+      if (instrc.dst == 0xFF) {
+        push_stack[sppush].u64 = instrc.imm64;
+        push_stack[sppush].type = VAL;
+      } else {
+        push_stack[sppush] = regsc[instrc.dst & 0x3F];
+      }
+
+      sppush++;
       break;
     case OPCODE_POP:
       if (sppush <= 0) {
-        printf("STACK UNDERFLOW");
+        printf("STACK UNDERFLOW\n");
         fclose(binfile);
         return;
       }
-      regsc[instrc.dst & 0x3F].u64 = push_stack[--sppush];
+      regsc[instrc.dst & 0x3F] = push_stack[--sppush];
       break;
     case OPCODE_NOP:
       break;
@@ -337,7 +345,12 @@ void interpret_easy64(const char *binname) {
       }
       return;
     case OPCODE_SYSCALL:
-      uint64_t syscall_id = instrc.imm64;
+      uint64_t syscall_id = 0;
+      if (instrc.dst == 0xFF) {
+        syscall_id = instrc.imm64;
+      } else {
+        syscall_id = regsc[instrc.dst & 0x3F].u64;
+      }
 
       long current_pos = ftell(binfile);
 
@@ -363,11 +376,7 @@ void interpret_easy64(const char *binname) {
       // FOR DEBUG
       printf("%ld\n", regsc[instrc.dst & 0x3F].u64);
       break;
-    case OPCODE_PRINTLBL:
-      // FOR DEBUG
-      uint8_t addr = instrc.imm64;
-      void *ptr = resolve_ptr(addr, &header, bss);
-      printf("%d", *(uint8_t *)ptr);
+
     case OPCODE_LOAD: {
       uint8_t dst_reg = instrc.dst & 0x3F;
       uint8_t src_reg = instrc.src & 0x3F;

@@ -232,10 +232,14 @@ void lbl_operand(char **tokens, Instruction *instrc, uint8_t opcode) {
 
 void nlbl_operants(char **tokens, Instruction *instrc, uint8_t opcode) {
   instrc->opcode = opcode;
-  const char *label = tokens[1];
-  instrc->dst = en_registers(tokens[1], 0);
+  if (isalpha(tokens[1][0])) {
+    instrc->dst = en_registers(tokens[1], 0);
+    instrc->imm64 = 0;
+  } else {
+    instrc->dst = 0xFF;
+    instrc->imm64 = (uint64_t)strtol(tokens[1], NULL, 0);
+  }
   instrc->src = 0xFF;
-  instrc->imm64 = 0;
 }
 
 void nothing_operants(char **tokens, Instruction *instrc, uint8_t opcode) {
@@ -372,7 +376,7 @@ int opcode(char *tokenized[], int count, Instruction *instrc) {
     lbl_operand(tokenized, instrc, OPCODE_ENTRY);
     return 1;
   } else if (strcmp(tokenized[0], "syscall") == 0) {
-    nlblnorg_operants(tokenized, instrc, OPCODE_SYSCALL);
+    nlbl_operants(tokenized, instrc, OPCODE_SYSCALL);
     return 1;
   } else if (strcmp(tokenized[0], "load") == 0) {
     def_operants(tokenized, instrc, OPCODE_LOAD);
