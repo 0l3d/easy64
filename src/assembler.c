@@ -442,18 +442,23 @@ void parser(const char *asm_file, const char *out_file) {
         datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_ASCII);
         size_t len = strlen(tokens[2]);
         byte_offset += len + 1;
+        header.data_size += len + 1;
       } else if (count >= 3 && strcmp(tokens[1], "byte") == 0) {
         datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_BYTE);
         byte_offset += 1;
+        header.data_size += 1;
       } else if (count >= 3 && strcmp(tokens[1], "hword") == 0) {
         datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_HWORD);
         byte_offset += 2;
+        header.data_size += 2;
       } else if (count >= 3 && strcmp(tokens[1], "word") == 0) {
         datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_WORD);
         byte_offset += 4;
+        header.data_size += 4;
       } else if (count >= 3 && strcmp(tokens[1], "dword") == 0) {
         datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_DWORD);
         byte_offset += 8;
+        header.data_size += 8;
       }
     } else if (sections == SECTION_BSS) {
       if (!header.section_bss) {

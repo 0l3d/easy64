@@ -15,9 +15,8 @@ uint8_t memory[MEMORY_SIZE] = {0};
 uint8_t *zmemory[ZMEMORY_SIZE] = {0};
 
 void *resolve_ptr(uint64_t ptr, BinaryHeader *header, BSSSectionType *bss) {
-
   uint64_t data_start = header->section_data;
-  uint64_t data_end = data_start + MEMORY_SIZE;
+  uint64_t data_end = data_start + header->data_size;
 
   if (ptr >= data_start && ptr < data_end) {
     return memory + (ptr - data_start);
@@ -63,7 +62,6 @@ void interpret_easy64(const char *binname) {
   }
 
   for (int i = 0; i < header.bss_count; i++) {
-
     zmemory[bss[i].bss_id] = (uint8_t *)calloc(bss[i].size, sizeof(uint8_t));
   }
 

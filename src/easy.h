@@ -12,6 +12,7 @@ typedef struct {
   int section_bss;
   int section_code;
   int bss_count;
+  int data_size;
 } BinaryHeader;
 
 typedef enum {
