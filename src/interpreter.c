@@ -28,7 +28,6 @@ void *resolve_ptr(uint64_t ptr, BinaryHeader *header, BSSSectionType *bss) {
                       (ptr - bss_entry.addr));
     }
   }
-
   return NULL;
 }
 
@@ -53,7 +52,7 @@ void interpret_easy64(const char *binname) {
   fread(&header, sizeof(BinaryHeader), 1, binfile);
 
   fseek(binfile, header.section_data, SEEK_SET);
-  fread(&memory, 1, sizeof(memory), binfile);
+  fread(&memory, 1, header.data_size, binfile);
 
   BSSSectionType bss[header.bss_count];
   if (header.bss_count != 0) {

@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <threads.h>
 
 int error_report = 0;
 int linecounter = 0;
@@ -46,7 +47,7 @@ int tokenizer(char *bufin, char *bufout[], int max_count) {
       continue;
     } else if (*p == '\0') {
       break;
-    } else if (*p == '"' || *p == '\'') {
+    } else if (*p == '"') {
       char in_string = *p;
       const char *string_start = ++p;
       while (*p && *p != in_string)
@@ -176,20 +177,30 @@ void def_operants(char **tokenized, Instruction *instrc, uint8_t opcode) {
   }
 
   instrc->opcode = opcode;
-  if (isalpha(tokenized[1][0])) {
+  if (isalpha(tokenized[1][0]) || tokenized[1][0] == '\'') {
     if (isalpha(tokenized[1][1])) {
-      int addr = 0;
-      addr = get_data_addr(tokenized[1]);
-      if (addr == -1) {
-        addr = get_bss_addr(tokenized[1]);
-        if (addr == -1) {
-          printf("Got an error Line: %d, Situation: 'undefined label' on %s",
+      if (tokenized[1][0] == '\'') {
+        if (tokenized[1][2] != '\'') {
+          printf("Got an error Line: %d, Situation: 'string error' on %s",
                  linecounter, tokenized[0]);
           return;
         }
+        instrc->src = 0xFF;
+        instrc->imm64 = tokenized[1][1];
+      } else {
+        int addr = 0;
+        addr = get_data_addr(tokenized[1]);
+        if (addr == -1) {
+          addr = get_bss_addr(tokenized[1]);
+          if (addr == -1) {
+            printf("Got an error Line: %d, Situation: 'undefined label' on %s",
+                   linecounter, tokenized[0]);
+            return;
+          }
+        }
+        instrc->src = 0xAD;
+        instrc->imm64 = addr;
       }
-      instrc->src = 0xAD;
-      instrc->imm64 = addr;
     } else {
       instrc->src = en_registers(tokenized[1], 0);
     }
@@ -285,12 +296,7 @@ void revdef_operants(char **tokenized, Instruction *instrc, uint8_t opcode) {
              linecounter, tokenized[0]);
     }
   }
-  if (isalpha(tokenized[1][0])) {
-    instrc->src = en_registers(tokenized[1], 0);
-  } else {
-    instrc->src = 0xFF;
-    instrc->imm64 = (uint64_t)strtol(tokenized[1], NULL, 0);
-  }
+  instrc->src = en_registers(tokenized[1], 0);
 }
 
 int opcode(char *tokenized[], int count, Instruction *instrc) {
@@ -384,9 +390,6 @@ int opcode(char *tokenized[], int count, Instruction *instrc) {
   } else if (strcmp(tokenized[0], "store") == 0) {
     revdef_operants(tokenized, instrc, OPCODE_STORE);
     return 1;
-  } else if (strcmp(tokenized[0], "printlbl") == 0) {
-    lbl_operand(tokenized, instrc, OPCODE_PRINTLBL);
-    return 1;
   }
   return 0;
 }
@@ -403,11 +406,21 @@ void parser(const char *asm_file, const char *out_file) {
   linecounter = 0;
 
   int current_instruction_pos = 0;
+  // sections
+  char linesec[256];
+  while (fgets(line, sizeof(line), as_file)) {
+    char *tokens[1000];
+    int count = tokenizer(line, tokens, 10);
 
-  sections = SECTION_DATA;
+    if (count >= 1) {
+      section(tokens);
+      break;
+    }
+  }
 
   BinaryHeader header;
   memset(&header, 0, sizeof(header));
+
   while (fgets(line, sizeof(line), as_file)) {
     linecounter++;
     char *linecopy = strdup(line);
@@ -415,7 +428,7 @@ void parser(const char *asm_file, const char *out_file) {
     char *tokens[1000];
     int count = tokenizer(line, tokens, 10);
 
-    if (count >= 1) {
+    if (count >= 1 && strcmp(tokens[0], "section") == 0) {
       section(tokens);
     }
 

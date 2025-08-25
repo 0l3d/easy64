@@ -8,16 +8,16 @@ section data
 
 section code 
   mov data, r0 # ptr 
-  
+
   load r0, r8 # H 
   inc r0 
-  load r0, r7 # e 
+  load r0, r7 # e
   
-  mov 0, r10 
+  mov 0, r10
   store r8, outbuf 
   inc r10 
   store r7, outbuf
-  mov outbuf, r12 
+  mov outbuf, r12
 
   push 1            # first argument 
   push r12          # second 
