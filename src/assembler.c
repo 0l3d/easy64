@@ -774,7 +774,6 @@ void parser(const char *asm_file, const char *out_file) {
   write_bss(asm_file, out_file);
   write_data(asm_file, out_file);
   write_code(asm_file, out_file);
-
   for (int i = 0; i < imported_count; i++) {
     free(imported_files[i]);
   }

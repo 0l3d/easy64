@@ -46,7 +46,6 @@ start:       # start label
 
 # Planned
 
-- import support
 - Sub Register Support (Assembler generates binaries for sub-registers like r0, e0, b0, p0; currently CPU does not support execution on these sub-registers)
 
 # License
