@@ -1,4 +1,5 @@
 #include "easy.h"
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,23 +49,37 @@ void interpret_easy64(const char *binname) {
   Register64 push_stack[256];
 
   BinaryHeader header;
+
   fseek(binfile, 0, SEEK_SET);
-  fread(&header, sizeof(BinaryHeader), 1, binfile);
+  if (fread(&header, sizeof(BinaryHeader), 1, binfile) != 1) {
+    perror("Binary header cant read failed");
+    return;
+  };
 
   fseek(binfile, header.section_data, SEEK_SET);
-  fread(&memory, 1, header.data_size, binfile);
+  if (fread(&memory, 1, header.data_size, binfile) !=
+      (size_t)header.data_size) {
+    perror("Data section read failed");
+    return;
+  };
 
   BSSSectionType bss[header.bss_count];
   if (header.bss_count != 0) {
     fseek(binfile, header.section_bss, SEEK_SET);
-    fread(&bss, sizeof(BSSSectionType), header.bss_count, binfile);
+    if (fread(&bss, sizeof(BSSSectionType), header.bss_count, binfile) !=
+        (size_t)header.bss_count) {
+      perror("Bss section read failed");
+      return;
+    }
   }
 
   for (int i = 0; i < header.bss_count; i++) {
     zmemory[bss[i].bss_id] = (uint8_t *)calloc(bss[i].size, sizeof(uint8_t));
   }
 
-  fseek(binfile, header.section_code, SEEK_SET);
+  if (header.entry_start_point > 0) {
+    fseek(binfile, header.entry_start_point, SEEK_SET);
+  }
 
   uint64_t pc = 0;
 
@@ -244,7 +259,7 @@ void interpret_easy64(const char *binname) {
         regsc[dst_reg].u64 -= 1;
       }
       break;
-    case OPCODE_CMP:
+    case OPCODE_CMP: {
       uint64_t val1, val2;
       if (instrc.src != 0xFF)
         val1 = regsc[instrc.src & 0x3F].u64;
@@ -262,6 +277,7 @@ void interpret_easy64(const char *binname) {
       flags.sign = (result < 0);
       flags.greater = (result > 0);
       break;
+    }
     case OPCODE_JE:
       if (flags.zero) {
         pc = instrc.imm64;
@@ -341,7 +357,7 @@ void interpret_easy64(const char *binname) {
         free(zmemory[bss[i].bss_id]);
       }
       return;
-    case OPCODE_SYSCALL:
+    case OPCODE_SYSCALL: {
       uint64_t syscall_id = 0;
       if (instrc.dst == 0xFF) {
         syscall_id = instrc.imm64;
@@ -369,6 +385,7 @@ void interpret_easy64(const char *binname) {
       regsc[6].u64 = ret;
       fseek(binfile, current_pos, SEEK_SET);
       break;
+    }
     case OPCODE_PRINT:
       // FOR DEBUG
       printf("%ld\n", regsc[instrc.dst & 0x3F].u64);

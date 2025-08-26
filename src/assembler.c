@@ -22,6 +22,8 @@ int data_count = 0;
 
 Section sections;
 
+BinaryHeader header;
+
 Register64 regs[NUM_REGS];
 
 int tokenizer(char *bufin, char *bufout[], int max_count) {
@@ -127,7 +129,7 @@ void bsssp(const char *bss_label_name, int pos, BssType type, int size) {
   bss_count++;
 }
 
-uint8_t en_registers(const char *reg_name, int reg_adr) {
+uint8_t en_registers(const char *reg_name) {
   int index = -1;
   uint8_t type = 0;
 
@@ -202,7 +204,7 @@ void def_operants(char **tokenized, Instruction *instrc, uint8_t opcode) {
         instrc->imm64 = addr;
       }
     } else {
-      instrc->src = en_registers(tokenized[1], 0);
+      instrc->src = en_registers(tokenized[1]);
     }
   } else {
     instrc->src = 0xFF;
@@ -210,7 +212,7 @@ void def_operants(char **tokenized, Instruction *instrc, uint8_t opcode) {
   }
 
   if (isalpha(tokenized[3][0])) {
-    instrc->dst = en_registers(tokenized[3], 0);
+    instrc->dst = en_registers(tokenized[3]);
   } else {
     instrc->dst = 0xFF;
     instrc->imm64 = (uint64_t)strtol(tokenized[3], NULL, 0);
@@ -244,7 +246,7 @@ void lbl_operand(char **tokens, Instruction *instrc, uint8_t opcode) {
 void nlbl_operants(char **tokens, Instruction *instrc, uint8_t opcode) {
   instrc->opcode = opcode;
   if (isalpha(tokens[1][0])) {
-    instrc->dst = en_registers(tokens[1], 0);
+    instrc->dst = en_registers(tokens[1]);
     instrc->imm64 = 0;
   } else {
     instrc->dst = 0xFF;
@@ -253,7 +255,7 @@ void nlbl_operants(char **tokens, Instruction *instrc, uint8_t opcode) {
   instrc->src = 0xFF;
 }
 
-void nothing_operants(char **tokens, Instruction *instrc, uint8_t opcode) {
+void nothing_operants(Instruction *instrc, uint8_t opcode) {
   instrc->opcode = opcode;
   instrc->dst = 0xFF;
   instrc->src = 0xFF;
@@ -296,12 +298,16 @@ void revdef_operants(char **tokenized, Instruction *instrc, uint8_t opcode) {
              linecounter, tokenized[0]);
     }
   }
-  instrc->src = en_registers(tokenized[1], 0);
+  instrc->src = en_registers(tokenized[1]);
 }
 
-int opcode(char *tokenized[], int count, Instruction *instrc) {
+int opcode(char *tokenized[], Instruction *instrc) {
+  if (!tokenized[0]) {
+    return -1;
+  }
+
   if (strcmp(tokenized[0], "nop") == 0) {
-    nothing_operants(tokenized, instrc, OPCODE_NOP);
+    nothing_operants(instrc, OPCODE_NOP);
     return 1;
   } else if (strcmp(tokenized[0], "mov") == 0) {
     def_operants(tokenized, instrc, OPCODE_MOV);
@@ -358,7 +364,7 @@ int opcode(char *tokenized[], int count, Instruction *instrc) {
     lbl_operand(tokenized, instrc, OPCODE_CALL);
     return 1;
   } else if (strcmp(tokenized[0], "ret") == 0) {
-    nothing_operants(tokenized, instrc, OPCODE_RET);
+    nothing_operants(instrc, OPCODE_RET);
     return 1;
   } else if (strcmp(tokenized[0], "push") == 0) {
     nlbl_operants(tokenized, instrc, OPCODE_PUSH);
@@ -367,7 +373,7 @@ int opcode(char *tokenized[], int count, Instruction *instrc) {
     nlbl_operants(tokenized, instrc, OPCODE_POP);
     return 1;
   } else if (strcmp(tokenized[0], "hlt") == 0) {
-    nothing_operants(tokenized, instrc, OPCODE_HLT);
+    nothing_operants(instrc, OPCODE_HLT);
     return 1;
   } else if (strcmp(tokenized[0], "inc") == 0) {
     nlbl_operants(tokenized, instrc, OPCODE_INC);
@@ -394,63 +400,188 @@ int opcode(char *tokenized[], int count, Instruction *instrc) {
   return 0;
 }
 
-void parser(const char *asm_file, const char *out_file) {
-  FILE *as_file = fopen(asm_file, "r");
-  if (as_file == NULL) {
-    printf("assembler failed to open file first pass\n");
+char *imported_files[1000];
+int imported_count = 0;
+
+int byte_offset = 0;
+
+void refresh_header(const char *out_file) {
+  FILE *outfile = fopen(out_file, "r+b");
+  if (outfile == NULL) {
+    perror("refresh header open failed");
+    return;
+  }
+  fseek(outfile, 0, SEEK_SET);
+  fwrite(&header, 1, sizeof(BinaryHeader), outfile);
+  fclose(outfile);
+}
+
+void write_bss(const char *asm_file, const char *out_file) {
+  for (int i = 0; i < imported_count; i++) {
+    FILE *imported_file = fopen(imported_files[i], "r");
+    if (imported_file == NULL) {
+      perror("Imported file error");
+      return;
+    }
+    char line[1024];
+    while (fgets(line, sizeof(line), imported_file)) {
+      char *tokens[10];
+      int count = tokenizer(line, tokens, 10);
+
+      if (count > 0) {
+        if (strcmp(tokens[0], "section") == 0 &&
+            strcmp(tokens[1], "bss") == 0) {
+          if (!header.section_bss) {
+            header.section_bss = byte_offset + sizeof(BinaryHeader);
+            sections = SECTION_BSS;
+          }
+        }
+      }
+      if (sections == SECTION_BSS) {
+        if (count >= 3 && strcmp(tokens[1], "reb") == 0) {
+          int size = atoi(tokens[2]);
+          bsssp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_RB,
+                size);
+          byte_offset += sizeof(BSSSectionType);
+        }
+      }
+    }
+    fclose(imported_file);
+  }
+  FILE *mainfile = fopen(asm_file, "r");
+  if (mainfile == NULL) {
+    perror("mainfile file error");
+    return;
+  }
+  char line[1024];
+  while (fgets(line, sizeof(line), mainfile)) {
+    char *tokens[10];
+    int count = tokenizer(line, tokens, 10);
+
+    if (count > 0) {
+      if (strcmp(tokens[0], "section") == 0 && strcmp(tokens[1], "bss") == 0) {
+        if (!header.section_bss) {
+          header.section_bss = byte_offset + sizeof(BinaryHeader);
+          sections = SECTION_BSS;
+        }
+      }
+      if (sections == SECTION_BSS) {
+        if (count >= 3 && strcmp(tokens[1], "reb") == 0) {
+          int size = atoi(tokens[2]);
+          bsssp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_RB,
+                size);
+          byte_offset += sizeof(BSSSectionType);
+        }
+      }
+    }
+  }
+  fclose(mainfile);
+  header.bss_count = bss_count;
+  FILE *outfile = fopen(out_file, "wb");
+  if (outfile == NULL) {
+    perror("write out file failed");
     return;
   }
 
-  char line[256];
-  int byte_offset = 0;
-  linecounter = 0;
-
-  int current_instruction_pos = 0;
-  // sections
-  char linesec[256];
-  while (fgets(line, sizeof(line), as_file)) {
-    char *tokens[1000];
-    int count = tokenizer(line, tokens, 10);
-
-    if (count >= 1) {
-      section(tokens);
-      break;
-    }
+  fwrite(&header, 1, sizeof(BinaryHeader), outfile);
+  for (int i = 0; i < bss_count; i++) {
+    fwrite(&bss[i].section, sizeof(BSSSectionType), 1, outfile);
   }
+  fclose(outfile);
+}
 
-  BinaryHeader header;
-  memset(&header, 0, sizeof(header));
+void write_data(const char *asm_file, const char *out_file) {
+  FILE *outfile = fopen(out_file, "ab");
+  if (outfile == NULL) {
+    perror("append out file failed");
+    return;
+  }
+  for (int i = 0; i < imported_count; i++) {
+    FILE *imported_file = fopen(imported_files[i], "r");
+    if (imported_file == NULL) {
+      perror("Imported file error");
+      return;
+    }
+    char line[1024];
+    while (fgets(line, sizeof(line), imported_file)) {
+      char *tokens[10];
+      int count = tokenizer(line, tokens, 10);
 
-  while (fgets(line, sizeof(line), as_file)) {
-    linecounter++;
-    char *linecopy = strdup(line);
-
-    char *tokens[1000];
+      if (count > 0) {
+        if (strcmp(tokens[0], "section") == 0 &&
+            strcmp(tokens[1], "data") == 0) {
+          if (!header.section_data) {
+            header.section_data = byte_offset + sizeof(BinaryHeader);
+            sections = SECTION_DATA;
+          }
+        }
+        if (count >= 3 && strcmp(tokens[1], "ascii") == 0) {
+          datasp(tokens[0], byte_offset + sizeof(BinaryHeader),
+                 DATA_TYPE_ASCII);
+          size_t len = strlen(tokens[2]);
+          byte_offset += len + 1;
+          header.data_size += len + 1;
+        } else if (count >= 3 && strcmp(tokens[1], "byte") == 0) {
+          datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_BYTE);
+          byte_offset += 1;
+          header.data_size += 1;
+        } else if (count >= 3 && strcmp(tokens[1], "hword") == 0) {
+          datasp(tokens[0], byte_offset + sizeof(BinaryHeader),
+                 DATA_TYPE_HWORD);
+          byte_offset += 2;
+          header.data_size += 2;
+        } else if (count >= 3 && strcmp(tokens[1], "word") == 0) {
+          datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_WORD);
+          byte_offset += 4;
+          header.data_size += 4;
+        } else if (count >= 3 && strcmp(tokens[1], "dword") == 0) {
+          datasp(tokens[0], byte_offset + sizeof(BinaryHeader),
+                 DATA_TYPE_DWORD);
+          byte_offset += 8;
+          header.data_size += 8;
+        }
+      }
+      if (sections == SECTION_DATA) {
+        if (count >= 3 && strcmp(tokens[1], "ascii") == 0) {
+          const char *str = tokens[2];
+          size_t len = strlen(str);
+          fwrite(str, 1, len, outfile);
+          fputc('\0', outfile);
+        } else if (count >= 3 && strcmp(tokens[1], "byte") == 0) {
+          uint8_t val = (uint8_t)strtol(tokens[2], NULL, 0);
+          fputc(val, outfile);
+        } else if (count >= 3 && strcmp(tokens[1], "hword") == 0) {
+          uint16_t val = (uint16_t)strtol(tokens[2], NULL, 0);
+          fwrite(&val, 1, 2, outfile);
+        } else if (count >= 3 && strcmp(tokens[1], "word") == 0) {
+          uint32_t val = (uint32_t)strtol(tokens[2], NULL, 0);
+          fwrite(&val, 1, 4, outfile);
+        } else if (count >= 3 && strcmp(tokens[1], "dword") == 0) {
+          uint64_t val = (uint64_t)strtol(tokens[2], NULL, 0);
+          fwrite(&val, 1, 4, outfile);
+        }
+      }
+    }
+    fclose(imported_file);
+  }
+  FILE *mainfile = fopen(asm_file, "r");
+  if (mainfile == NULL) {
+    perror("mainfile file error");
+    return;
+  }
+  char line[1024];
+  while (fgets(line, sizeof(line), mainfile)) {
+    char *tokens[10];
     int count = tokenizer(line, tokens, 10);
 
-    if (count >= 1 && strcmp(tokens[0], "section") == 0) {
-      section(tokens);
-    }
-
-    if (sections == SECTION_CODE) {
-      if (!header.section_code) {
-        header.section_code = byte_offset + sizeof(BinaryHeader);
-      }
-
-      if (count >= 2 && strcmp(tokens[1], ":") == 0) {
-        labelsp(tokens[0], current_instruction_pos, LABEL_TYPE_CODE);
-      }
-
-      if (count >= 1 && strcmp(tokens[0], "section") != 0) {
-        if (count == 1 || (count >= 2 && strcmp(tokens[1], ":") != 0)) {
-          current_instruction_pos++;
+    if (count > 0) {
+      if (strcmp(tokens[0], "section") == 0 && strcmp(tokens[1], "data") == 0) {
+        if (!header.section_data) {
+          header.section_data = byte_offset + sizeof(BinaryHeader);
+          sections = SECTION_DATA;
         }
       }
 
-    } else if (sections == SECTION_DATA) {
-      if (!header.section_data) {
-        header.section_data = byte_offset + sizeof(BinaryHeader);
-      }
       if (count >= 3 && strcmp(tokens[1], "ascii") == 0) {
         datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_ASCII);
         size_t len = strlen(tokens[2]);
@@ -473,99 +604,178 @@ void parser(const char *asm_file, const char *out_file) {
         byte_offset += 8;
         header.data_size += 8;
       }
-    } else if (sections == SECTION_BSS) {
-      if (!header.section_bss) {
-        header.section_bss = byte_offset + sizeof(BinaryHeader);
-      }
-      if (count >= 3 && strcmp(tokens[1], "reb") == 0) {
-        int size = atoi(tokens[2]);
-        bsssp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_RB,
-              size);
-        byte_offset += sizeof(BSSSectionType);
-      }
     }
-
-    for (int i = 0; i < count; i++) {
-      free(tokens[i]);
-    }
-    free(linecopy);
-  }
-  fclose(as_file);
-
-  as_file = fopen(asm_file, "r");
-  FILE *out = fopen(out_file, "wb");
-  if (as_file == NULL || out == NULL) {
-    printf("assembler failed to open file second pass\n");
-    if (as_file)
-      fclose(as_file);
-    if (out)
-      fclose(out);
-    return;
-  }
-
-  header.bss_count = bss_count;
-  fwrite(&header, sizeof(header), 1, out);
-
-  linecounter = 0;
-  int bss_i = 0;
-  while (fgets(line, sizeof(line), as_file)) {
-    linecounter++;
-
-    char *tokens[10];
-    int count = tokenizer(line, tokens, 10);
-
-    if (count == 0)
-      continue;
-
-    if (count == 2 && strcmp(tokens[1], ":") == 0) {
-      for (int i = 0; i < count; i++) {
-        free(tokens[i]);
-      }
-      continue;
-    }
-    if (count >= 1 && strcmp(tokens[0], "section") == 0) {
-      section(tokens);
-      for (int i = 0; i < count; i++) {
-        free(tokens[i]);
-      }
-      continue;
-    }
-
-    if (sections == SECTION_CODE) {
-      Instruction instrc = {0};
-      if (opcode(tokens, count, &instrc)) {
-        fwrite(&instrc, sizeof(instrc), 1, out);
-      }
-    } else if (sections == SECTION_DATA) {
+    if (sections == SECTION_DATA) {
       if (count >= 3 && strcmp(tokens[1], "ascii") == 0) {
         const char *str = tokens[2];
         size_t len = strlen(str);
-        fwrite(str, 1, len, out);
-        fputc('\0', out);
+        fwrite(str, 1, len, outfile);
+        fputc('\0', outfile);
       } else if (count >= 3 && strcmp(tokens[1], "byte") == 0) {
         uint8_t val = (uint8_t)strtol(tokens[2], NULL, 0);
-        fputc(val, out);
+        fputc(val, outfile);
       } else if (count >= 3 && strcmp(tokens[1], "hword") == 0) {
         uint16_t val = (uint16_t)strtol(tokens[2], NULL, 0);
-        fwrite(&val, 1, 2, out);
+        fwrite(&val, 1, 2, outfile);
       } else if (count >= 3 && strcmp(tokens[1], "word") == 0) {
         uint32_t val = (uint32_t)strtol(tokens[2], NULL, 0);
-        fwrite(&val, 1, 4, out);
+        fwrite(&val, 1, 4, outfile);
       } else if (count >= 3 && strcmp(tokens[1], "dword") == 0) {
         uint64_t val = (uint64_t)strtol(tokens[2], NULL, 0);
-        fwrite(&val, 1, 4, out);
-      }
-    } else if (sections == SECTION_BSS) {
-      if (count >= 3) {
-        fwrite(&bss[bss_i++].section, sizeof(BSSSectionType), 1, out);
+        fwrite(&val, 1, 4, outfile);
       }
     }
+  }
+  refresh_header(out_file);
+  fclose(mainfile);
+  fclose(outfile);
+}
 
+void write_code(const char *asm_file, const char *out_file) {
+  FILE *outfile = fopen(out_file, "ab");
+  if (outfile == NULL) {
+    perror("append out file failed");
+    return;
+  }
+  int current_instruction_pos = 0;
+  for (int i = 0; i < imported_count; i++) {
+    FILE *imported_file = fopen(imported_files[i], "r");
+    if (imported_file == NULL) {
+      perror("Imported file error");
+      return;
+    }
+    char line[1024];
+
+    while (fgets(line, sizeof(line), imported_file)) {
+      char *tokens[10];
+      int count = tokenizer(line, tokens, 10);
+
+      if (count > 0) {
+        if (strcmp(tokens[0], "section") == 0 &&
+            strcmp(tokens[1], "code") == 0) {
+          if (!header.section_code) {
+            header.section_code = byte_offset + sizeof(BinaryHeader);
+            sections = SECTION_CODE;
+          }
+        }
+        if (count >= 2 && strcmp(tokens[1], ":") == 0) {
+          labelsp(tokens[0], current_instruction_pos, LABEL_TYPE_CODE);
+        }
+
+        if (count >= 1 && strcmp(tokens[0], "section") != 0) {
+          if (count == 1 || (count >= 2 && strcmp(tokens[1], ":") != 0)) {
+            current_instruction_pos++;
+          }
+        }
+      }
+      for (int i = 0; i < count; i++) {
+        free(tokens[i]);
+      }
+    }
+    fclose(imported_file);
+  }
+  FILE *mainfile = fopen(asm_file, "r");
+  if (mainfile == NULL) {
+    perror("mainfile file error");
+    return;
+  }
+  char line[1024];
+
+  while (fgets(line, sizeof(line), mainfile)) {
+    char *tokens[10];
+    int count = tokenizer(line, tokens, 10);
+
+    if (count > 0) {
+      if (strcmp(tokens[0], "section") == 0 && strcmp(tokens[1], "code") == 0) {
+        if (!header.section_code) {
+          header.section_code = byte_offset + sizeof(BinaryHeader);
+          sections = SECTION_CODE;
+        }
+      }
+      if (count >= 2 && strcmp(tokens[1], ":") == 0) {
+        labelsp(tokens[0], current_instruction_pos, LABEL_TYPE_CODE);
+      }
+
+      if (count >= 1 && strcmp(tokens[0], "section") != 0) {
+        if (count == 1 || (count >= 2 && strcmp(tokens[1], ":") != 0)) {
+          current_instruction_pos++;
+        }
+      }
+    }
     for (int i = 0; i < count; i++) {
       free(tokens[i]);
     }
   }
+  for (int i = 0; i < imported_count; i++) {
+    FILE *imported_file = fopen(imported_files[i], "r");
+    if (imported_file == NULL) {
+      perror("Imported file error");
+      return;
+    }
+    char line[1024];
+    while (fgets(line, sizeof(line), imported_file)) {
+      char *tokens[10];
+      int count = tokenizer(line, tokens, 10);
+      Instruction instrc = {0};
+      if (opcode(tokens, &instrc)) {
+        fwrite(&instrc, sizeof(instrc), 1, outfile);
+        byte_offset += sizeof(instrc);
+      }
+      for (int i = 0; i < count; i++) {
+        free(tokens[i]);
+      }
+    }
+    fclose(imported_file);
+  }
+  int addr = ftell(outfile);
+  header.entry_start_point = addr + sizeof(Instruction);
+  mainfile = fopen(asm_file, "r");
+  if (mainfile == NULL) {
+    perror("mainfile file error");
+    return;
+  }
+  while (fgets(line, sizeof(line), mainfile)) {
+    char *tokens[10];
+    int count = tokenizer(line, tokens, 10);
+    Instruction instrc = {0};
+    if (opcode(tokens, &instrc)) {
+      fwrite(&instrc, sizeof(instrc), 1, outfile);
+      byte_offset += sizeof(instrc);
+    }
+    for (int i = 0; i < count; i++) {
+      free(tokens[i]);
+    }
+  }
+  refresh_header(out_file);
+  fclose(mainfile);
+  fclose(outfile);
+}
 
-  fclose(as_file);
-  fclose(out);
+void parser(const char *asm_file, const char *out_file) {
+  FILE *asmfi = fopen(asm_file, "rb");
+  if (asmfi == NULL) {
+    perror("asmfi open failed");
+    return;
+  }
+  char line[256];
+  while (fgets(line, sizeof(line), asmfi)) {
+    char *tokens[10];
+    int count = tokenizer(line, tokens, 10);
+    if (count > 0) {
+      if (strcmp(tokens[0], "import") == 0) {
+        imported_files[imported_count++] = strdup(tokens[1]);
+      }
+    }
+    for (int i = 0; i < count; i++) {
+      free(tokens[i]);
+    }
+  }
+  fclose(asmfi);
+  write_bss(asm_file, out_file);
+  write_data(asm_file, out_file);
+  write_code(asm_file, out_file);
+
+  for (int i = 0; i < imported_count; i++) {
+    free(imported_files[i]);
+  }
 }
