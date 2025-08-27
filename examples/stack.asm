@@ -4,7 +4,7 @@ section bss
   outbuf reb 2 
 
 section data 
-  data ascii "Hello, World!"
+  data ascii "Hello, World!" 
 
 section code 
 start:

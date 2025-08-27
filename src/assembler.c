@@ -534,9 +534,23 @@ void write_data(const char *asm_file, const char *out_file) {
         if (count >= 3 && strcmp(tokens[1], "ascii") == 0) {
           datasp(tokens[0], byte_offset + sizeof(BinaryHeader),
                  DATA_TYPE_ASCII);
-          size_t len = strlen(tokens[2]);
-          byte_offset += len + 1;
-          header.data_size += len + 1;
+          for (int i = 2; i < count; i++) {
+            if (isdigit(tokens[i][0])) {
+              byte_offset += 1;
+              header.data_size += 1;
+              continue;
+            }
+            for (int j = 0; j < strlen(tokens[i]); j++) {
+              if (tokens[i][j] == '\'') {
+                byte_offset += 1;
+                header.data_size += 1;
+                j += 2;
+                continue;
+              }
+              byte_offset += 1;
+              header.data_size += 1;
+            }
+          }
         } else if (count >= 3 && strcmp(tokens[1], "byte") == 0) {
           datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_BYTE);
           byte_offset += 1;
@@ -579,9 +593,23 @@ void write_data(const char *asm_file, const char *out_file) {
       }
       if (count >= 3 && strcmp(tokens[1], "ascii") == 0) {
         datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_ASCII);
-        size_t len = strlen(tokens[2]);
-        byte_offset += len + 1;
-        header.data_size += len + 1;
+        for (int i = 2; i < count; i++) {
+          if (isdigit(tokens[i][0])) {
+            byte_offset += 1;
+            header.data_size += 1;
+            continue;
+          }
+          for (int j = 0; j < strlen(tokens[i]); j++) {
+            if (tokens[i][j] == '\'') {
+              byte_offset += 1;
+              header.data_size += 1;
+              j += 2;
+              continue;
+            }
+            byte_offset += 1;
+            header.data_size += 1;
+          }
+        }
       } else if (count >= 3 && strcmp(tokens[1], "byte") == 0) {
         datasp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_BYTE);
         byte_offset += 1;
@@ -619,13 +647,32 @@ void write_data(const char *asm_file, const char *out_file) {
           continue;
         }
         if (count >= 3 && strcmp(tokens[1], "ascii") == 0) {
-          const char *str = tokens[2];
-          size_t len = strlen(str);
-          fwrite(str, 1, len, outfile);
-          fputc('\0', outfile);
+          int digit = 0;
+          for (int i = 2; i < count; i++) {
+            if (isdigit(tokens[i][0])) {
+              digit = atoi(tokens[i]);
+              fputc(digit, outfile);
+              continue;
+            }
+            for (int j = 0; j < strlen(tokens[i]); j++) {
+              if (tokens[i][j] == '\'') {
+                fputc(tokens[i][++j], outfile);
+                j++;
+                continue;
+              }
+              fputc(tokens[i][j], outfile);
+            }
+          }
         } else if (count >= 3 && strcmp(tokens[1], "byte") == 0) {
-          uint8_t val = (uint8_t)strtol(tokens[2], NULL, 0);
-          fputc(val, outfile);
+          int digit = 0;
+          for (int i = 2; i < count; i++) {
+            if (isdigit(tokens[i][0])) {
+              digit = atoi(tokens[i]);
+              fputc(digit, outfile);
+              continue;
+            }
+            fputc(tokens[i][1], outfile);
+          }
         } else if (count >= 3 && strcmp(tokens[1], "hword") == 0) {
           uint16_t val = (uint16_t)strtol(tokens[2], NULL, 0);
           fwrite(&val, 1, 2, outfile);
@@ -652,13 +699,32 @@ void write_data(const char *asm_file, const char *out_file) {
         continue;
       }
       if (count >= 3 && strcmp(tokens[1], "ascii") == 0) {
-        const char *str = tokens[2];
-        size_t len = strlen(str);
-        fwrite(str, 1, len, outfile);
-        fputc('\0', outfile);
+        int digit = 0;
+        for (int i = 2; i < count; i++) {
+          if (isdigit(tokens[i][0])) {
+            digit = atoi(tokens[i]);
+            fputc(digit, outfile);
+            continue;
+          }
+          for (int j = 0; j < strlen(tokens[i]); j++) {
+            if (tokens[i][j] == '\'') {
+              fputc(tokens[i][++j], outfile);
+              j++;
+              continue;
+            }
+            fputc(tokens[i][j], outfile);
+          }
+        }
       } else if (count >= 3 && strcmp(tokens[1], "byte") == 0) {
-        uint8_t val = (uint8_t)strtol(tokens[2], NULL, 0);
-        fputc(val, outfile);
+        int digit = 0;
+        for (int i = 2; i < count; i++) {
+          if (isdigit(tokens[i][0])) {
+            digit = atoi(tokens[i]);
+            fputc(digit, outfile);
+            continue;
+          }
+          fputc(tokens[i][1], outfile);
+        }
       } else if (count >= 3 && strcmp(tokens[1], "hword") == 0) {
         uint16_t val = (uint16_t)strtol(tokens[2], NULL, 0);
         fwrite(&val, 1, 2, outfile);
