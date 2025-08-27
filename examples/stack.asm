@@ -7,8 +7,8 @@ section data
   data ascii "Hello, World!"
 
 section code 
+start:
   mov data, r0 # ptr 
-
   load r0, r8 # H 
   inc r0 
   load r0, r7 # e
@@ -26,7 +26,7 @@ section code
   call scall
 
   # HIGH LEVEL PRINT FUNCTION
-  mov data, r0 
+  mov data, r0
   push r0
   call print
 
@@ -47,7 +47,7 @@ print:
   mov r7, r4
   mov 0, r3 
 loop:
-  load r7, r1  
+  load r7, r1
   cmp r1, 0 
   je syscalling 
   

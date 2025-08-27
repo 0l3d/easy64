@@ -1,4 +1,5 @@
 #include "easy.h"
+#include <inttypes.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -79,6 +80,8 @@ void interpret_easy64(const char *binname) {
 
   if (header.entry_start_point > 0) {
     fseek(binfile, header.entry_start_point, SEEK_SET);
+  } else {
+    fseek(binfile, header.section_code, SEEK_SET);
   }
 
   uint64_t pc = 0;
@@ -210,23 +213,6 @@ void interpret_easy64(const char *binname) {
         regsc[dst_reg].u64 = ~regsc[src_reg].u64;
       }
       break;
-
-    case OPCODE_RET:
-      if (spcall > 0) {
-        pc = call_stack[--spcall];
-        fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
-              SEEK_SET);
-        continue;
-      } else {
-        printf("CCPU READ ERROR: RET USAGE UNDEFINED");
-        fclose(binfile);
-
-        for (int i = 0; i < header.bss_count; i++) {
-          free(zmemory[bss[i].bss_id]);
-        }
-        return;
-      }
-      break;
     case OPCODE_SHR:
       if (instrc.src == 0xFF) {
         uint8_t dst_reg = instrc.dst & 0x3F;
@@ -340,6 +326,22 @@ void interpret_easy64(const char *binname) {
       }
 
       sppush++;
+      break;
+    case OPCODE_RET:
+      if (spcall > 0) {
+        pc = call_stack[--spcall];
+        fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
+              SEEK_SET);
+        continue;
+      } else {
+        printf("CCPU READ ERROR: RET USAGE UNDEFINED");
+        fclose(binfile);
+
+        for (int i = 0; i < header.bss_count; i++) {
+          free(zmemory[bss[i].bss_id]);
+        }
+        return;
+      }
       break;
     case OPCODE_POP:
       if (sppush <= 0) {
