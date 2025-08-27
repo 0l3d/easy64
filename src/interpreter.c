@@ -1,5 +1,6 @@
 #include "easy.h"
 #include <inttypes.h>
+#include <iso646.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -299,6 +300,22 @@ void interpret_easy64(const char *binname) {
         continue;
       }
       break;
+    case OPCODE_PUSH:
+      if (sppush >= 256) {
+        printf("STACK OVERFLOW\n");
+        fclose(binfile);
+        return;
+      }
+      if (instrc.dst == 0xFF) {
+        push_stack[sppush].u64 = instrc.imm64;
+        push_stack[sppush].type = VAL;
+      } else {
+        push_stack[sppush] = regsc[instrc.dst & 0x3F];
+      }
+
+      sppush++;
+
+      break;
     case OPCODE_JMP:
       pc = instrc.imm64;
       fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
@@ -311,22 +328,6 @@ void interpret_easy64(const char *binname) {
       fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
             SEEK_SET);
       continue;
-    case OPCODE_PUSH:
-      if (sppush >= 256) {
-        printf("STACK OVERFLOW\n");
-        fclose(binfile);
-        return;
-      }
-
-      if (instrc.dst == 0xFF) {
-        push_stack[sppush].u64 = instrc.imm64;
-        push_stack[sppush].type = VAL;
-      } else {
-        push_stack[sppush] = regsc[instrc.dst & 0x3F];
-      }
-
-      sppush++;
-      break;
     case OPCODE_RET:
       if (spcall > 0) {
         pc = call_stack[--spcall];
@@ -342,14 +343,6 @@ void interpret_easy64(const char *binname) {
         }
         return;
       }
-      break;
-    case OPCODE_POP:
-      if (sppush <= 0) {
-        printf("STACK UNDERFLOW\n");
-        fclose(binfile);
-        return;
-      }
-      regsc[instrc.dst & 0x3F] = push_stack[--sppush];
       break;
     case OPCODE_NOP:
       break;
@@ -453,6 +446,14 @@ void interpret_easy64(const char *binname) {
       fseek(binfile, header.section_code + (pc * sizeof(Instruction)),
             SEEK_SET);
       continue;
+    case OPCODE_POP:
+      if (sppush <= 0) {
+        printf("STACK UNDERFLOW\n");
+        fclose(binfile);
+        return;
+      }
+      regsc[instrc.dst & 0x3F] = push_stack[--sppush];
+      break;
     default:
       continue;
     }

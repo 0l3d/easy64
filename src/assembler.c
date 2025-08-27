@@ -429,6 +429,7 @@ int pass(int count, char **tokens) {
     }
     return 0;
   }
+
   return -1;
 }
 
@@ -776,8 +777,16 @@ void write_code(const char *asm_file, const char *out_file) {
             labelsp(tokens[0], current_instruction_pos, LABEL_TYPE_CODE);
           }
 
-          if (count >= 1 && strcmp(tokens[0], "section") != 0) {
-            if (count == 1 || (count >= 2 && strcmp(tokens[1], ":") != 0)) {
+          if (count >= 1 && tokens[0] && strcmp(tokens[0], "section") != 0 &&
+              strcmp(tokens[0], "import") != 0 &&
+              (count < 2 || (tokens[1] && strcmp(tokens[1], "ascii") != 0 &&
+                             strcmp(tokens[1], "hword") != 0 &&
+                             strcmp(tokens[1], "word") != 0 &&
+                             strcmp(tokens[1], "dword") != 0 &&
+                             strcmp(tokens[1], "reb") != 0))) {
+
+            if (count == 1 ||
+                (count >= 2 && tokens[1] && strcmp(tokens[1], ":") != 0)) {
               current_instruction_pos++;
             }
           }
@@ -807,15 +816,22 @@ void write_code(const char *asm_file, const char *out_file) {
           sections = SECTION_CODE;
         }
       }
-    }
-    if (sections == SECTION_CODE) {
-      if (count >= 2 && strcmp(tokens[1], ":") == 0) {
-        labelsp(tokens[0], current_instruction_pos, LABEL_TYPE_CODE);
-      }
+      if (sections == SECTION_CODE) {
+        if (count >= 2 && strcmp(tokens[1], ":") == 0) {
+          labelsp(tokens[0], current_instruction_pos, LABEL_TYPE_CODE);
+        }
+        if (count >= 1 && tokens[0] && strcmp(tokens[0], "section") != 0 &&
+            strcmp(tokens[0], "import") != 0 &&
+            (count < 2 || (tokens[1] && strcmp(tokens[1], "ascii") != 0 &&
+                           strcmp(tokens[1], "hword") != 0 &&
+                           strcmp(tokens[1], "word") != 0 &&
+                           strcmp(tokens[1], "dword") != 0 &&
+                           strcmp(tokens[1], "reb") != 0))) {
 
-      if (count >= 1 && strcmp(tokens[0], "section") != 0) {
-        if (count == 1 || (count >= 2 && strcmp(tokens[1], ":") != 0)) {
-          current_instruction_pos++;
+          if (count == 1 ||
+              (count >= 2 && tokens[1] && strcmp(tokens[1], ":") != 0)) {
+            current_instruction_pos++;
+          }
         }
       }
     }
