@@ -129,24 +129,61 @@ void bsssp(const char *bss_label_name, int pos, BssType type, int size) {
   bss_count++;
 }
 
-uint8_t en_registers(const char *reg_name) {
+uint16_t en_registers(const char *reg_name) {
   int index = -1;
-  uint8_t type = 0;
+  uint8_t main_type = 0;
+  RegAccessType access = REG64_FULL;
 
-  if (reg_name[0] == 'r')
-    type = 0;
-  else if (reg_name[0] == 'e')
-    type = 1;
-  else if (reg_name[0] == 'b')
-    type = 2;
-  else if (reg_name[0] == 'p')
-    type = 3;
-  else
-    return 0xFF;
+  if (reg_name[0] == 'r') {
+    main_type = 0;
+    access = REG64_FULL;
+    index = atoi(&reg_name[1]);
+  } else if (reg_name[0] == 'e') {
+    main_type = 1;
+    index = atoi(&reg_name[1]);
+    if (strstr(reg_name, "l"))
+      access = REG32_LOW;
+    else if (strstr(reg_name, "h"))
+      access = REG32_HIGH;
+    else
+      access = REG32_LOW;
+  } else if (reg_name[0] == 'b') {
+    main_type = 2;
+    index = atoi(&reg_name[1]);
+    if (strstr(reg_name, "ml"))
+      access = REG16_MIDLOW;
+    else if (strstr(reg_name, "mh"))
+      access = REG16_MIDHIGH;
+    else if (strstr(reg_name, "h"))
+      access = REG16_HIGH;
+    else
+      access = REG16_LOW;
+  } else if (reg_name[0] == 'p') {
+    main_type = 3;
+    index = atoi(&reg_name[1]);
+    if (strstr(reg_name, "b0"))
+      access = REG8_B0;
+    else if (strstr(reg_name, "b1"))
+      access = REG8_B1;
+    else if (strstr(reg_name, "b2"))
+      access = REG8_B2;
+    else if (strstr(reg_name, "b3"))
+      access = REG8_B3;
+    else if (strstr(reg_name, "b4"))
+      access = REG8_B4;
+    else if (strstr(reg_name, "b5"))
+      access = REG8_B5;
+    else if (strstr(reg_name, "b6"))
+      access = REG8_B6;
+    else if (strstr(reg_name, "b7"))
+      access = REG8_B7;
+    else
+      access = REG8_B0;
+  } else {
+    return 0xFFFF;
+  }
 
-  index = atoi(&reg_name[1]);
-
-  return (type << 6) | (index & 0x3F);
+  return (main_type << 12) | (access << 6) | (index & 0x3F);
 }
 
 int get_data_addr(const char *name) {
@@ -451,6 +488,9 @@ void collect_bss(char line[1024]) {
       bsssp(tokens[0], byte_offset + sizeof(BinaryHeader), DATA_TYPE_RB, size);
       byte_offset += sizeof(BSSSectionType);
     }
+  }
+  for (int i = 0; i < count; i++) {
+    free(tokens[i]);
   }
 }
 

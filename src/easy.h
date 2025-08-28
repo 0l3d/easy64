@@ -41,6 +41,24 @@ typedef struct {
   };
 } Register64;
 
+typedef enum {
+  REG64_FULL,
+  REG32_LOW,
+  REG32_HIGH,
+  REG16_LOW,
+  REG16_MIDLOW,
+  REG16_MIDHIGH,
+  REG16_HIGH,
+  REG8_B0,
+  REG8_B1,
+  REG8_B2,
+  REG8_B3,
+  REG8_B4,
+  REG8_B5,
+  REG8_B6,
+  REG8_B7
+} RegAccessType;
+
 typedef struct {
   uint8_t opcode;
   uint8_t src;
