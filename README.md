@@ -10,6 +10,9 @@ Simple cpu architecture in C.
 - Basic stack operations (push, pop, call, ret)
 - Arithmetic, logic, and bitwise operations
 - Input/output instructions (print, input)
+- Import support for modules.
+- Subregister support (8, 16, 32-bit)
+- And more!
 
 ## Usage
 
@@ -43,10 +46,6 @@ start:       # start label
 ./easy -c hello.asm # compiles to a.out
 ./easy -i a.out
 ```
-
-# Planned
-
-- Sub Register Support (Assembler generates binaries for sub-registers like r0, e0, b0, p0; currently CPU does not support execution on these sub-registers)
 
 # License
 
