@@ -2,8 +2,8 @@ section bss
   buffer reb 128
 
 section data 
-  filename ascii "interpreter_code.script"
-  prints ascii "print"
+  filename ascii "interpreter_code.script" 0 
+  prints ascii "print" 0 
 
 section code 
 entry bufreader
@@ -40,7 +40,7 @@ string_compare:
   jmp exit
 
 matchingnow:
-  inc r8
+  inc r8              
   inc r9 
   jmp string_compare
   
